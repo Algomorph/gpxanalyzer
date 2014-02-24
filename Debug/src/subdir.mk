@@ -4,13 +4,16 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
-../src/gpuanalysisfilters.cpp 
+../src/gpuanalysisfilters.cpp \
+../src/main.cpp 
 
 OBJS += \
-./src/gpuanalysisfilters.o 
+./src/gpuanalysisfilters.o \
+./src/main.o 
 
 CPP_DEPS += \
-./src/gpuanalysisfilters.d 
+./src/gpuanalysisfilters.d \
+./src/main.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

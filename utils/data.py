@@ -26,7 +26,7 @@ def get_raster_names(directory):
     names.sort()
     raster_names = []
     for name in names:
-        if(re.search(r"[^.]*.(?:png|jpg)",name)):
+        if(re.search(r"[^.]*.(?:png|jpg|PNG|JPG)",name)):
             raster_names.append(name)
     return raster_names;
     
