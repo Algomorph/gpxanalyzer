@@ -1,29 +1,35 @@
+/***
+ * @brief OpenCL kernels for recursive summed-area table filter
+ * @details Based on gpufilter cuda code from code.google.com/p/gpufilter/
+ * 			Reference:
+ *			Nehab, D., Maximo, A., Lima, R. S., & Hoppe, H. (2011, December). GPU-efficient recursive
+ *			filtering and summed-area tables. In ACM Transactions on Graphics (TOG) (Vol. 30, No. 6, p. 176). ACM.
+ *
+ *@author Gregory Kramida
+ *@date 02/25/2013
+ *@copyright GNU Public License v3.
+ */
+
 #ifdef __CDT_PARSER__
 #include "OpenCLKernel.hpp"
-#define WIDTH 32
-#define HEIGHT 32
 #define N_COLUMNS 1
 #define N_ROWS 1
 #define LAST_M 1
 #define LAST_N 1
 #define BORDER 1
-#define CARRY_WIDTH 32
-#define CARRY_HEIGHT 1
+#define WIDTH 32
+#define HEIGHT 32
 #define INV_WIDTH 1.0F
 #define INPUT_STRIDE 160
 #define INV_HEIGHT 1.0F
 #include <gpudefs.h>
 #else
-#include "gpudefs.h"
+#include "include/gpudefs.h"
 #endif
 
 //== IMPLEMENTATION ===========================================================
 
 //-- SAT Stage 1 ----------------------------------------------------
-
-//group size: WARP_SIZE X SCHEDULE_OPTIMIZED_N_WARPS
-//yBar: rowGroupCount x CARRY_WIDTH
-//vHat: colGroupCount x CARRY_HEIGHT
 /**
  *CARRY_WIDTH/WARP_SIZE blocks wide
  *
@@ -50,9 +56,9 @@ void computeBlockAggregates(const __global float* input, __global float* yBar,
 			(__local float (*)[WARP_SIZE + 1]) &dataBlock[yWorkItem][xWorkItem];
 
 	//position the input pointer to this work-item's cell
-	input += row * CARRY_WIDTH + col;
-	yBar += yGroup * CARRY_WIDTH + col;	//top->bottom output block
-	vHat += xGroup * CARRY_WIDTH + row0 + xWorkItem;	//left->right output block
+	input += row * WIDTH + col;
+	yBar += yGroup * WIDTH + col;	//top->bottom output block
+	vHat += xGroup * WIDTH + row0 + xWorkItem;	//left->right output block
 
 #pragma unroll
 	//fill the local data block that's shared between work items
@@ -112,10 +118,11 @@ void computeBlockAggregates(const __global float* input, __global float* yBar,
 __kernel
 void verticalAggregate(__global float *yBar, __global float *ySum) {
 
-	const size_t yWorkItem = get_local_id(1), xWorkItem = get_local_id(0), xGroup = get_group_id(
-			0), col0 = xGroup * MAX_WARPS + yWorkItem, col = col0 * WARP_SIZE + xWorkItem;
+	const size_t yWorkItem = get_local_id(1), xWorkItem = get_local_id(0),
+			xGroup = get_group_id(0), col0 = xGroup * MAX_WARPS + yWorkItem,
+			col = col0 * WARP_SIZE + xWorkItem;
 
-	if (col >= CARRY_WIDTH)
+	if (col >= WIDTH)
 		return;
 
 	yBar += col;
@@ -151,7 +158,7 @@ void verticalAggregate(__global float *yBar, __global float *ySum) {
 
 		//TODO:??? fix ybar -> y ??? (left over from original code)-------------------------
 
-		yBar += CARRY_WIDTH;
+		yBar += WIDTH;
 		y = *yBar += y;
 
 	}
@@ -167,10 +174,11 @@ void verticalAggregate(__global float *yBar, __global float *ySum) {
 __kernel
 void horizontalAggregate(const __global float *ySum, __global float *vHat) {
 
-	const size_t xWorkItem = get_local_id(0), yWorkItem = get_local_id(1), yGroup = get_group_id(
-			1), row0 = yGroup * MAX_WARPS + yWorkItem, row = row0 * WARP_SIZE + xWorkItem;
+	const size_t xWorkItem = get_local_id(0), yWorkItem = get_local_id(1),
+			yGroup = get_group_id(1), row0 = yGroup * MAX_WARPS + yWorkItem,
+			row = row0 * WARP_SIZE + xWorkItem;
 
-	if (row >= CARRY_HEIGHT)
+	if (row >= HEIGHT)
 		return;
 
 	vHat += row;
@@ -189,17 +197,19 @@ void horizontalAggregate(const __global float *ySum, __global float *vHat) {
 		}
 
 		v = *vHat += v + y;
-		vHat += CARRY_HEIGHT;
+		vHat += HEIGHT;
 
 	}
 
 }
 
 //-- Algorithm SAT Stage 4 ----------------------------------------------------
-
+/**
+ * Retistributes the intermediate results spanning the whole input matrix within each block.
+ */
 __kernel
-void redistributeSAT( __global float *matrix, __global const float *yBar,
-		__global const float *vHat) {
+void redistributeSAT_inplace( __global float *matrix,
+		__global const float *yBar, __global const float *vHat) {
 
 	const size_t tx = get_local_id(0), ty = get_local_id(1), bx = get_group_id(
 			0), by = get_group_id(1), col = bx * WARP_SIZE + tx, row0 = by
@@ -210,18 +220,18 @@ void redistributeSAT( __global float *matrix, __global const float *yBar,
 	__local float (*bdata)[WARP_SIZE + 1] =
 			(__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	matrix += (row0 + ty) * CARRY_WIDTH + col;
+	matrix += (row0 + ty) * WIDTH + col;
 	if (by > 0)
-		yBar += (by - 1) * CARRY_WIDTH + col;
+		yBar += (by - 1) * WIDTH + col;
 	if (bx > 0)
-		vHat += (bx - 1) * CARRY_HEIGHT + row0 + tx;
+		vHat += (bx - 1) * HEIGHT + row0 + tx;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
 			i += SCHEDULE_OPTIMIZED_N_WARPS) {
 		**bdata = *matrix;
 		bdata += SCHEDULE_OPTIMIZED_N_WARPS;
-		matrix += SCHEDULE_OPTIMIZED_N_WARPS * CARRY_WIDTH;
+		matrix += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
 	}
 	if (ty < WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS) {
 		**bdata = *matrix;
@@ -266,15 +276,14 @@ void redistributeSAT( __global float *matrix, __global const float *yBar,
 
 	bdata = (__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	matrix -= (WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS))
-			* CARRY_WIDTH;
+	matrix -= (WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS)) * WIDTH;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
 			i += SCHEDULE_OPTIMIZED_N_WARPS) {
 		*matrix = **bdata;
 		bdata += SCHEDULE_OPTIMIZED_N_WARPS;
-		matrix += SCHEDULE_OPTIMIZED_N_WARPS * CARRY_WIDTH;
+		matrix += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
 	}
 	if (ty < WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS) {
 		*matrix = **bdata;
@@ -285,9 +294,9 @@ void redistributeSAT( __global float *matrix, __global const float *yBar,
 //-- Algorithm SAT Stage 4 (not-in-place) -------------------------------------
 
 __kernel
-void algSAT_stage4_not_inplace( __global float *g_out,
-		__global const float *g_in, __global const float *g_y,
-		__global const float *g_v) {
+void redistributeSAT_not_inplace( __global float* outputMatrix,
+		__global const float* inputMatrix, __global const float* yBar,
+		__global const float* vHat) {
 
 	const size_t tx = get_local_id(0), ty = get_local_id(1), bx = get_group_id(
 			0), by = get_group_id(1), col = bx * WARP_SIZE + tx, row0 = by
@@ -297,21 +306,21 @@ void algSAT_stage4_not_inplace( __global float *g_out,
 	__local float (*bdata)[WARP_SIZE + 1] =
 			(__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	g_in += (row0 + ty) * CARRY_WIDTH + col;
+	inputMatrix += (row0 + ty) * WIDTH + col;
 	if (by > 0)
-		g_y += (by - 1) * CARRY_WIDTH + col;
+		yBar += (by - 1) * WIDTH + col;
 	if (bx > 0)
-		g_v += (bx - 1) * CARRY_HEIGHT + row0 + tx;
+		vHat += (bx - 1) * HEIGHT + row0 + tx;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
 			i += SCHEDULE_OPTIMIZED_N_WARPS) {
-		**bdata = *g_in;
+		**bdata = *inputMatrix;
 		bdata += SCHEDULE_OPTIMIZED_N_WARPS;
-		g_in += SCHEDULE_OPTIMIZED_N_WARPS * CARRY_WIDTH;
+		inputMatrix += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
 	}
 	if (ty < WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS) {
-		**bdata = *g_in;
+		**bdata = *inputMatrix;
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -324,7 +333,7 @@ void algSAT_stage4_not_inplace( __global float *g_out,
 
 			float prev;
 			if (by > 0)
-				prev = *g_y;
+				prev = *yBar;
 			else
 				prev = 0.f;
 
@@ -338,7 +347,7 @@ void algSAT_stage4_not_inplace( __global float *g_out,
 
 			float prev;
 			if (bx > 0)
-				prev = *g_v;
+				prev = *vHat;
 			else
 				prev = 0.f;
 
@@ -353,17 +362,17 @@ void algSAT_stage4_not_inplace( __global float *g_out,
 
 	bdata = (__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	g_out += (row0 + ty) * CARRY_WIDTH + col;
+	outputMatrix += (row0 + ty) * WIDTH + col;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
 			i += SCHEDULE_OPTIMIZED_N_WARPS) {
-		*g_out = **bdata;
+		*outputMatrix = **bdata;
 		bdata += SCHEDULE_OPTIMIZED_N_WARPS;
-		g_out += SCHEDULE_OPTIMIZED_N_WARPS * CARRY_WIDTH;
+		outputMatrix += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
 	}
 	if (ty < WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS) {
-		*g_out = **bdata;
+		*outputMatrix = **bdata;
 	}
 
 }
