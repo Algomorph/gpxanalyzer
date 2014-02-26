@@ -12,6 +12,8 @@
 
 #ifdef __CDT_PARSER__
 #include "OpenCLKernel.hpp"
+#define WARP_SIZE 32
+#define HALF_WARP_SIZE 16
 #define N_COLUMNS 1
 #define N_ROWS 1
 #define LAST_M 1
@@ -40,7 +42,7 @@
  */
 __kernel
 void computeBlockAggregates(const __global float* input, __global float* yBar,
-		__global float* vHat, __global float* debugBuf) {
+		__global float* vHat) {
 
 	const size_t yWorkItem = get_local_id(1), xWorkItem = get_local_id(0),
 			yGroup = get_group_id(1), xGroup = get_group_id(0), col =
