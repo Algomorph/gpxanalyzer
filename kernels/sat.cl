@@ -32,17 +32,21 @@
 //== IMPLEMENTATION ===========================================================
 
 //-- SAT Stage 1 ----------------------------------------------------
+
+//group size: WARP_SIZE X SCHEDULE_OPTIMIZED_N_WARPS
+//yBar: rowGroupCount x WIDTH
+//vHat: colGroupCount x HEIGHT
 /**
- *CARRY_WIDTH/WARP_SIZE blocks wide
+ *WIDTH/WARP_SIZE blocks wide
  *
  *Groups/Block size: WARP_SIZE X SCHEDULE_OPTIMIZED_N_WARPS
- *@param input - CARRY_WIDTH x CARRY_HEIGHT
- *@param rowGroupCount - rowGroupCount X CARRY_WIDTH
- *@param vHat - colGroupCount x CARRY_HEIGHT
+ *@param input - WIDTH x HEIGHT
+ *@param rowGroupCount - rowGroupCount X WIDTH
+ *@param vHat - colGroupCount x HEIGHT
  */
 __kernel
-void computeBlockAggregates(const __global float* input, __global float* yBar,
-		__global float* vHat) {
+void compute_block_aggregates(const __global float* input, __global float* group_column_sums,
+		__global float* group_row_sums) {
 
 	const size_t yWorkItem = get_local_id(1), xWorkItem = get_local_id(0),
 			yGroup = get_group_id(1), xGroup = get_group_id(0), col =
@@ -59,8 +63,8 @@ void computeBlockAggregates(const __global float* input, __global float* yBar,
 
 	//position the input pointer to this work-item's cell
 	input += row * WIDTH + col;
-	yBar += yGroup * WIDTH + col;	//top->bottom output block
-	vHat += xGroup * WIDTH + row0 + xWorkItem;	//left->right output block
+	group_column_sums += yGroup * WIDTH + col;	//top->bottom output block
+	group_row_sums += xGroup * WIDTH + row0 + xWorkItem;	//left->right output block
 
 #pragma unroll
 	//fill the local data block that's shared between work items
@@ -92,7 +96,7 @@ void computeBlockAggregates(const __global float* input, __global float* yBar,
 			for (int i = 1; i < WARP_SIZE; ++i, ++dataRow)
 				**dataRow = prev = **dataRow + prev;
 
-			*yBar = prev;
+			*group_column_sums = prev;
 		}
 
 		{   // calculate vhat (aggregate block/group horizontally) ----------
@@ -105,7 +109,7 @@ void computeBlockAggregates(const __global float* input, __global float* yBar,
 			for (int i = 1; i < WARP_SIZE; ++i, ++dataRow)
 				prev = *dataRow + prev;
 
-			*vHat = prev;
+			*group_row_sums = prev;
 		}
 
 	}
@@ -114,15 +118,14 @@ void computeBlockAggregates(const __global float* input, __global float* yBar,
 //-- Algorithm SAT Stage 2 ----------------------------------------------------
 /**
  * Aggregates the horizontal block-row-wise block column sums into column/block sums along the whole image
- * @param[in] yBar [rowGroupCount x CARRY_WIDTH] - sums of columns in each block row
+ * @param[in] yBar [rowGroupCount x WIDTH] - sums of columns in each block row
  * @param[out] ySum [colGroupCount x rowGroupCount] - sums of rows and columns for each block
  */
 __kernel
-void verticalAggregate(__global float *yBar, __global float *ySum) {
+void vertical_aggregate(__global float *yBar, __global float *ySum) {
 
-	const size_t yWorkItem = get_local_id(1), xWorkItem = get_local_id(0),
-			xGroup = get_group_id(0), col0 = xGroup * MAX_WARPS + yWorkItem,
-			col = col0 * WARP_SIZE + xWorkItem;
+	const size_t yWorkItem = get_local_id(1), xWorkItem = get_local_id(0), xGroup = get_group_id(
+			0), col0 = xGroup * MAX_WARPS + yWorkItem, col = col0 * WARP_SIZE + xWorkItem;
 
 	if (col >= WIDTH)
 		return;
@@ -170,15 +173,14 @@ void verticalAggregate(__global float *yBar, __global float *ySum) {
 //-- Algorithm SAT Stage 3 ----------------------------------------------------
 /**
  * Aggregates the horizontal block-row-wise block column sums into column/block sums along the whole image
- * @param[in] yBar [rowGroupCount x CARRY_WIDTH] - sums of columns in each block row
+ * @param[in] yBar [rowGroupCount x WIDTH] - sums of columns in each block row
  * @param[out] ySum [colGroupCount x rowGroupCount] - sums of rows and columns for each block
  */
 __kernel
-void horizontalAggregate(const __global float *ySum, __global float *vHat) {
+void horizontal_aggregate(const __global float *ySum, __global float *vHat) {
 
-	const size_t xWorkItem = get_local_id(0), yWorkItem = get_local_id(1),
-			yGroup = get_group_id(1), row0 = yGroup * MAX_WARPS + yWorkItem,
-			row = row0 * WARP_SIZE + xWorkItem;
+	const size_t xWorkItem = get_local_id(0), yWorkItem = get_local_id(1), yGroup = get_group_id(
+			1), row0 = yGroup * MAX_WARPS + yWorkItem, row = row0 * WARP_SIZE + xWorkItem;
 
 	if (row >= HEIGHT)
 		return;
@@ -206,12 +208,10 @@ void horizontalAggregate(const __global float *ySum, __global float *vHat) {
 }
 
 //-- Algorithm SAT Stage 4 ----------------------------------------------------
-/**
- * Retistributes the intermediate results spanning the whole input matrix within each block.
- */
+
 __kernel
-void redistributeSAT_inplace( __global float *matrix,
-		__global const float *yBar, __global const float *vHat) {
+void redistribute_SAT_inplace( __global float *matrix, __global const float *yBar,
+		__global const float *vHat) {
 
 	const size_t tx = get_local_id(0), ty = get_local_id(1), bx = get_group_id(
 			0), by = get_group_id(1), col = bx * WARP_SIZE + tx, row0 = by
@@ -278,7 +278,8 @@ void redistributeSAT_inplace( __global float *matrix,
 
 	bdata = (__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	matrix -= (WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS)) * WIDTH;
+	matrix -= (WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS))
+			* WIDTH;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
@@ -296,9 +297,9 @@ void redistributeSAT_inplace( __global float *matrix,
 //-- Algorithm SAT Stage 4 (not-in-place) -------------------------------------
 
 __kernel
-void redistributeSAT_not_inplace( __global float* outputMatrix,
-		__global const float* inputMatrix, __global const float* yBar,
-		__global const float* vHat) {
+void redistribute_SAT_not_inplace( __global float *g_out,
+		__global const float *g_in, __global const float *g_y,
+		__global const float *g_v) {
 
 	const size_t tx = get_local_id(0), ty = get_local_id(1), bx = get_group_id(
 			0), by = get_group_id(1), col = bx * WARP_SIZE + tx, row0 = by
@@ -308,21 +309,21 @@ void redistributeSAT_not_inplace( __global float* outputMatrix,
 	__local float (*bdata)[WARP_SIZE + 1] =
 			(__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	inputMatrix += (row0 + ty) * WIDTH + col;
+	g_in += (row0 + ty) * WIDTH + col;
 	if (by > 0)
-		yBar += (by - 1) * WIDTH + col;
+		g_y += (by - 1) * WIDTH + col;
 	if (bx > 0)
-		vHat += (bx - 1) * HEIGHT + row0 + tx;
+		g_v += (bx - 1) * HEIGHT + row0 + tx;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
 			i += SCHEDULE_OPTIMIZED_N_WARPS) {
-		**bdata = *inputMatrix;
+		**bdata = *g_in;
 		bdata += SCHEDULE_OPTIMIZED_N_WARPS;
-		inputMatrix += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
+		g_in += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
 	}
 	if (ty < WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS) {
-		**bdata = *inputMatrix;
+		**bdata = *g_in;
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -335,7 +336,7 @@ void redistributeSAT_not_inplace( __global float* outputMatrix,
 
 			float prev;
 			if (by > 0)
-				prev = *yBar;
+				prev = *g_y;
 			else
 				prev = 0.f;
 
@@ -349,7 +350,7 @@ void redistributeSAT_not_inplace( __global float* outputMatrix,
 
 			float prev;
 			if (bx > 0)
-				prev = *vHat;
+				prev = *g_v;
 			else
 				prev = 0.f;
 
@@ -364,17 +365,17 @@ void redistributeSAT_not_inplace( __global float* outputMatrix,
 
 	bdata = (__local float (*)[WARP_SIZE + 1]) &s_block[ty][tx];
 
-	outputMatrix += (row0 + ty) * WIDTH + col;
+	g_out += (row0 + ty) * WIDTH + col;
 
 #pragma unroll
 	for (int i = 0; i < WARP_SIZE - (WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS);
 			i += SCHEDULE_OPTIMIZED_N_WARPS) {
-		*outputMatrix = **bdata;
+		*g_out = **bdata;
 		bdata += SCHEDULE_OPTIMIZED_N_WARPS;
-		outputMatrix += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
+		g_out += SCHEDULE_OPTIMIZED_N_WARPS * WIDTH;
 	}
 	if (ty < WARP_SIZE % SCHEDULE_OPTIMIZED_N_WARPS) {
-		*outputMatrix = **bdata;
+		*g_out = **bdata;
 	}
 
 }

@@ -80,14 +80,23 @@ Perhaps, try specifying a different device type?""")
     # retrieve device memory information
     global_mem = device.global_mem_size
     local_mem = device.local_mem_size
+    wg_size = device.get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
+    num_sms = device.get_info(cl.device_info.MAX_COMPUTE_UNITS)
+    processors_per_sm = dev.processors_per_sm(device)
+    max_threads = processors_per_sm * num_sms
+    
+    
     # retrieve warp/wavefront size (or # of hardware threads in case of CPU)
     warp_size = dev.determine_warp_size(device, context)
     if(verbose > 0):
         print """\nDevice Information
   Global Memory Size: {0:0d} MiB
   Local/Workgroup Memory Size: {1:0d} KiB
-  Warp/Wavefront Size: {2:0d} MiB"""\
-        .format(global_mem / bytes_in_mb, local_mem / 1024, warp_size)
+  Warp/Wavefront: {2:0d}
+  Number of Streaming Multiprocessors: {3:0d}
+  Best guess for number of processors per SM: {4:0d}
+  Best guess for maximum concurrent execution paths: {5:0d}"""\
+        .format(global_mem / bytes_in_mb, local_mem / 1024, warp_size, num_sms, processors_per_sm, max_threads)
         
     # determine size of OpenCL buffers
     # best guess for used VRAM
@@ -103,7 +112,6 @@ Perhaps, try specifying a different device type?""")
     if(verbose > 0):
         print "Limiting tile size for device to {0:0d} x {0:0d} pixels ({1:0d} MiB input buffer)."\
         .format(cell_size, input_buf_size / bytes_in_mb)
-        
     
     #TODO: for now, convert to floats and run old sat.cl. Later, switch up the kernels to load the texture instead.
     #traverse the file tiles
@@ -120,19 +128,11 @@ Perhaps, try specifying a different device type?""")
             y_start = 0;
             y_end = cell_size
             for cell_y in xrange(n_cells_y):
-                pass
+                
                 y_start = y_end
                 y_end += cell_size
             x_start = x_end
             x_end+=cell_size
-        
-        
-        
-        
-        
-    
-    
-    
 
 # main entry point
 if __name__ == '__main__':

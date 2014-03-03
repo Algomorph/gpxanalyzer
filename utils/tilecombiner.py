@@ -85,7 +85,7 @@ def combine_tiles(input_folder, output_folder, tile_size):
     start_cell_x = 0
     end_cell_x = min(side_cell_count, n_cells_x - 1)
     retrieval_set_up = False
-    photo_id = None
+    image_id = None
     maxlevel = None
     
     for tile_x in range(0, n_tiles_x):
@@ -110,11 +110,11 @@ def combine_tiles(input_folder, output_folder, tile_size):
                         if(not retrieval_set_up):
                             photo_id_re = re.compile("\d+$")
                             #TODO: add capability for user to name the gigapan image id
-                            photo_id = int(photo_id_re.findall(input_folder)[0])
-                            maxlevel = gigapan.set_up_retrieval(photo_id, verbose = True)[2]
+                            image_id = int(photo_id_re.findall(input_folder)[0])
+                            maxlevel = gigapan.set_up_retrieval(image_id, verbose = True)[2]
                             retrieval_set_up = True
                         #fetch from gigiapan
-                        gigapan.fetch_tile(input_folder, photo_id, maxlevel, cell_x, cell_y, verbose = True)
+                        gigapan.fetch_tile(input_folder, image_id, maxlevel, cell_x, cell_y, verbose = True)
                         #re-read
                         img = cv2.imread(full_img_path)
                         

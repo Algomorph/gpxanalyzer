@@ -46,6 +46,16 @@ def list_devices():
         print "%d: %s" % (ix,device)
         ix += 1
         
+def processors_per_sm(device):
+    if(device.type == cl.device_type.CPU):
+        #TODO: dynamically determine this
+        return 2;#assume two threads/CORE
+    elif(device.type == cl.device_type.GPU and device.vendor_id in vendor_ids["NVIDIA"] or "NVIDIA" in device.vendor):
+        return 8;
+    elif(device.type == cl.device_type.GPU and device.vendor_id in vendor_ids["AMD"] or "AMD" in device.vendor):
+        return 4;
+    
+        
 def determine_warp_size(device,context):
     '''
     Determines the warp size / wavefront / work group suggested multiple for a given OpenCL device.
