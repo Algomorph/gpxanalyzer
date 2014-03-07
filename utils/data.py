@@ -15,6 +15,12 @@ if(hasattr(cv2,'IMREAD_UNCHANGED')):
 elif(hasattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')):
     IMREAD_UNCHANGED = getattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')
 
+def load_string_from_file(path):
+    src_file = open(path,"r")
+    src = src_file.read()
+    src_file.close()
+    return src
+
 def parse_num_from_name(name):
     num_match = re.search("\d+", name)
     if not num_match:

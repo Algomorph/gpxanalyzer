@@ -82,8 +82,8 @@ Perhaps, try specifying a different device type?""")
     local_mem = device.local_mem_size
     wg_size = device.get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
     num_sms = device.get_info(cl.device_info.MAX_COMPUTE_UNITS)
-    processors_per_sm = dev.processors_per_sm(device)
-    max_threads = processors_per_sm * num_sms
+    determine_n_processors_per_sm = dev.determine_n_processors_per_sm(device)
+    max_threads = determine_n_processors_per_sm * num_sms
     
     
     # retrieve warp/wavefront size (or # of hardware threads in case of CPU)
@@ -93,10 +93,16 @@ Perhaps, try specifying a different device type?""")
   Global Memory Size: {0:0d} MiB
   Local/Workgroup Memory Size: {1:0d} KiB
   Warp/Wavefront: {2:0d}
-  Number of Streaming Multiprocessors: {3:0d}
-  Best guess for number of processors per SM: {4:0d}
-  Best guess for maximum concurrent execution paths: {5:0d}"""\
-        .format(global_mem / bytes_in_mb, local_mem / 1024, warp_size, num_sms, processors_per_sm, max_threads)
+  Max Workgroup Size: {3:0d}
+  Number of Streaming Multiprocessors: {4:0d}
+  Best guess for number of processors per SM: {5:0d}
+  Best guess for maximum concurrent execution paths: {6:0d}"""\
+        .format(global_mem / bytes_in_mb, 
+                local_mem / 1024, warp_size,
+                wg_size,
+                num_sms, 
+                determine_n_processors_per_sm,
+                max_threads)
         
     # determine size of OpenCL buffers
     # best guess for used VRAM
@@ -105,10 +111,9 @@ Perhaps, try specifying a different device type?""")
     #>>HENCEFORTH in the code, all the tiles for the OpenCL device are referred to as "cells"
     #>>The tiles loaded into memory are still called "tiles"
     #>>Printed information messages use "tiles" but are more explicit about which ones.
-    
-    #the reason num_image_channels is multiplied by 4 is that we need intermediate buffers of int4 size for each channel
-    cell_size = 2 ** int(math.log(math.sqrt(avail_mem / (num_image_channels + num_image_channels*4) / avail_memory_divisor)) / math.log(2))
-    input_buf_size = cell_size * cell_size * num_image_channels
+    #the divisior '4' signifies 4 bytes / uint32, since computations will be done in uint32
+    cell_size = 2 ** int(math.log(math.sqrt(avail_mem / avail_memory_divisor / 4)) / math.log(2))
+    input_buf_size = cell_size * cell_size * 4
     if(verbose > 0):
         print "Limiting tile size for device to {0:0d} x {0:0d} pixels ({1:0d} MiB input buffer)."\
         .format(cell_size, input_buf_size / bytes_in_mb)

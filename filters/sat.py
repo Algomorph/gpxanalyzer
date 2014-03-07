@@ -5,37 +5,24 @@ Created on Feb 24, 2014
 '''
 import pyopencl as cl
 import numpy as np
-
-def __str_helper(const_name, value):
-        return " -D " + const_name + "=" + str(value)
-
-def gen_config(width, height, warp_size):
-    input_stride = width * warp_size
-    n_columns = width / warp_size
-    n_rows = height / warp_size
-    half_warp_size = warp_size / 2
-    return __str_helper("WIDTH", width) + \
-            __str_helper("HEIGHT", height) + \
-            __str_helper("WARP_SIZE", warp_size) + \
-            __str_helper("HALF_WARP_SIZE", half_warp_size) + \
-            __str_helper("INPUT_STRIDE", input_stride) + \
-            __str_helper("N_COLUMNS", n_columns) + \
-            __str_helper("N_ROWS", n_rows)
+import utils.data as dm
     
 
 class SummedAreaTableConfig:
-    def __init__(self, width, height, warp_size, max_threads):
-        self.width = width
-        self.height = height
+    def __init__(self, cell_width, cell_height, warp_size, max_threads):
+        self.width = cell_width
+        self.height = cell_height
         self.warp_size = warp_size
         self.half_warp_size = warp_size / 2
-        self.input_stride = width * warp_size
-        self.n_columns = width / warp_size
-        self.n_rows = height / warp_size
+        self.n_columns = cell_width / warp_size
+        self.n_rows = cell_height / warp_size
         self.max_threads = max_threads
         self.max_warps = max_threads/warp_size
-        #todo: figure out how to auto-tune this
+        self.n_horizontal_groups = (cell_width + max_threads - 1) / max_threads
+        self.n_vertical_groups = (cell_height + max_threads - 1) / max_threads
+        #TODO: figure out how to auto-tune this
         self.schedule_optimized_n_warps = 5
+        self.input_stride = cell_width * self.schedule_optimized_n_warps
         
     def __str_helper(self, const_name, value):
         return " -D " + const_name + "=" + str(value)
@@ -47,55 +34,88 @@ class SummedAreaTableConfig:
             self.__str_helper("INPUT_STRIDE", self.input_stride) + \
             self.__str_helper("N_COLUMNS", self.n_columns) + \
             self.__str_helper("N_ROWS", self.n_rows)
-    
-def cpu_sat(mat):
-    mout = np.zeros(mat.shape, dtype=np.int64)
-    for i_row in xrange(mat.shape[0]):
-        for i_col in xrange(mat.shape[1]):
-            mout[i_row,i_col] = mat[i_row,0:i_col].sum() + mat[0:i_row,i_col].sum() + mat[i_row,i_col]
-    return mout
 
+
+def __cpu_sat_process_cell(cell):
+    mout = np.zeros(cell.shape, dtype=np.int64)
+    mout[0,0] = cell[0,0]
+    for i_row in xrange(1,cell.shape[0]):
+        mout[i_row,0] = cell[i_row,0] + mout[i_row-1,0]
+    for i_col in xrange(1,cell.shape[1]):
+        mout[0,i_col] = cell[0,i_col] + mout[0,i_col-1]
+    
+    for i_row in xrange(1,cell.shape[0]):
+        for i_col in xrange(1,cell.shape[1]):
+            mout[i_row,i_col] = cell[i_row,i_col] + mout[i_row-1,i_col] + mout[i_row,i_col-1] - mout[i_row-1,i_col-1]
+    return mout
+    
+def __cpu_sat_process_channel(tile, cell_width, cell_height):
+    for y in xrange(0,tile.shape[0],cell_height):
+        for x in xrange(0,tile.shape[1],cell_width):
+            cell = tile[y:y+cell_height,x:x+cell_height]
+            np.copyto(cell,__cpu_sat_process_cell(cell))
+
+def cpu_sat(tile, cell_width = 4096, cell_height = 4096):
+    '''
+    Computes summed-area tables for the given tile.
+    There will be a separate table for each cell in tile.
+    @type tile: 2D or 3D numpy array
+    @param tile: the original image tile
+    @type cell_width: int
+    @param cell_width: width of the cells within the tile
+    @type cell_height: int
+    @param cell_hegiht: height of the cells within the tile
+    @return summed-area tables for cells of the whole tile, in the shape of the original tile and dtype np.uint32 
+    '''
+    if(len(tile.shape) > 2):
+        channel_sums = []
+        for i_channel in xrange(tile.shape[2]):
+            channel_sums.append(__cpu_sat_process_channel(tile[:,:,i_channel].astype(np.uint32),cell_width,cell_height))
+        return np.dstack(channel_sums)
+    else:
+        tile_copy = tile.astype(np.uint32)
+        __cpu_sat_process_channel(tile_copy,cell_width,cell_height)
+        return tile_copy
+        
 class SummedAreaTableFilter:
+    printed = False
     def __init__(self, context, config):
-        cl_source_file = open("kernels/sat.cl", "r")
-        cl_source = cl_source_file.read()
-        cl_source_file.close()
+        sat_cl_source = dm.load_string_from_file("kernels/imsat.cl")
         self.config = config
         self.context = context
-        self.program = cl.Program(context, cl_source).build(options=str(config))
+        self.program = cl.Program(context, sat_cl_source).build(options=str(config))
         self.kernels = {}
-
         
-    def compute(self, raster, queue = None):
-        blue = raster
-        #blue = raster[:,:,0].astype(np.float32)
-        #green = raster[:,:,1].astype(np.float32)
-        #red = raster[:,:,2].astype(np.float32)
-        context = self.context
+    def _process_cell(self, cell, queue, matrix, group_column_sums, group_row_sums, y_group_sums):
         config = self.config
-        mem_flags = cl.mem_flags
+        #upload table to device
+        cell_copy = cell.copy()#have to copy to produce a contiguous array
+        cl.enqueue_copy(queue, matrix, cell_copy, is_blocking=True)
         
-        matrix = cl.Buffer(context,mem_flags.READ_WRITE | mem_flags.COPY_HOST_PTR, hostbuf = blue)
-        group_column_sums = cl.Buffer(context,mem_flags.READ_WRITE, size=config.n_rows*config.width*4)
-        group_row_sums = cl.Buffer(context,mem_flags.READ_WRITE, size=config.n_columns*config.height*4)
-        y_group_sums = cl.Buffer(context,mem_flags.READ_WRITE, size=config.n_columns*config.n_rows*4)
-        
-        n_horizontal_groups = (config.width + config.max_threads - 1) / config.max_threads
-        n_vertical_groups = (config.height + config.max_threads - 1) / config.max_threads
-        
-        if(not queue):
-            queue = cl.CommandQueue(context)
         block_aggr_computed = self.program.compute_block_aggregates(queue,
-                                              (config.width,config.n_columns * config.schedule_optimized_n_warps),
+                                              (config.width,config.n_rows * config.schedule_optimized_n_warps),
                                               (config.warp_size, config.schedule_optimized_n_warps),
                                               matrix, group_column_sums, group_row_sums)
+        '''
+        if(not SummedAreaTableFilter.printed):
+            y_prologue = np.zeros((config.n_rows,config.width),dtype=np.uint32)
+            x_prologue = np.zeros((config.n_columns,config.height),dtype=np.uint32)
+            cl.enqueue_copy(queue, y_prologue, group_column_sums,wait_for=[block_aggr_computed],is_blocking=True)
+            cl.enqueue_copy(queue, x_prologue, group_row_sums,wait_for=[block_aggr_computed],is_blocking=True)
+            print y_prologue
+            print x_prologue.shape
+            print x_prologue.T
+            SummedAreaTableFilter.printed = True
+        '''
         y_groups_computed = self.program.vertical_aggregate(queue, 
-                                            (n_horizontal_groups*config.warp_size, config.max_warps), 
+                                            (config.n_horizontal_groups*config.warp_size, config.max_warps), 
                                             (config.warp_size,config.max_warps),
                                             group_column_sums,y_group_sums,
                                              wait_for=[block_aggr_computed])
+        
+            
         x_groups_computed = self.program.horizontal_aggregate(queue, 
-                                            (config.warp_size,n_vertical_groups*config.max_warps),
+                                            (config.warp_size,config.n_vertical_groups*config.max_warps),
                                             (config.warp_size,config.max_warps),
                                             y_group_sums,group_row_sums,
                                             wait_for=[y_groups_computed])
@@ -104,14 +124,60 @@ class SummedAreaTableFilter:
                                             (config.warp_size,config.schedule_optimized_n_warps),
                                             matrix, group_column_sums, group_row_sums,
                                             wait_for=[x_groups_computed])
-        sum_blue = np.zeros_like(blue,dtype=np.float32)
         queue.flush()
-        cl.enqueue_copy(queue, sum_blue, matrix,wait_for=[final_computed],is_blocking=True)
+        #download table back
+        cl.enqueue_copy(queue, cell_copy, matrix,wait_for=[final_computed],is_blocking=True)
+        np.copyto(cell,cell_copy)
+        
+    def _process_channel(self,channel):
+        pass
+    def __call__(self, tile, queue = None):
+        '''
+        Process a single tile
+        '''
+        context = self.context
+        config = self.config
+        mem_flags = cl.mem_flags
+        
+        #allocate buffers
+        #input/output
+        matrix = cl.Buffer(context,mem_flags.READ_WRITE, size = config.height * config.width*4)
+        #group block intermediate results
+        group_column_sums = cl.Buffer(context,mem_flags.READ_WRITE, size=config.n_rows*config.width*4)
+        group_row_sums = cl.Buffer(context,mem_flags.READ_WRITE, size=config.n_columns*config.height*4)
+        #these will hold aggregate 
+        y_group_sums = cl.Buffer(context,mem_flags.READ_WRITE, size=config.n_columns*config.n_rows*4)
+        
+        #create a queue if one is needed
+        if(queue is None):
+            queue = cl.CommandQueue(context)
+        
+        #TODO: revise carryover logic, this doesn't quite work
+        summed_channels = []
+        #traverse channels
+        for i_channel in xrange(tile.shape[2]):
+            #copy channel from uint8 to uint32
+            channel = tile[:,:,i_channel].astype(np.uint32)
+            for y in xrange(0,channel.shape[0],config.height):
+                y_end = y+config.height
+                #traverse cell columns
+                for x in xrange(0,channel.shape[1],config.width):
+                    x_end = x+config.width
+                    #slice of the tile channel
+                    cell = channel[y:y_end,x:x_end]
+                    #process cell in-place
+                    self.process_cell(cell, queue, matrix, group_column_sums, group_row_sums, y_group_sums)
+            #aggregate summed channels in a single list
+            summed_channels.append(channel)
+        #release buffers
         group_column_sums.release()
         group_row_sums.release()
         y_group_sums.release()
         matrix.release()
-        return sum_blue
+        #convert list of channels to a single Numpy array and return
+        return np.dstack(summed_channels)
+        
+        
         
         
         

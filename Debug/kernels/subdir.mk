@@ -4,14 +4,17 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CL_SRCS += \
+../kernels/imsat.cl \
 ../kernels/sat.cl \
 ../kernels/test_kernel.cl 
 
 OBJS += \
+./kernels/imsat.o \
 ./kernels/sat.o \
 ./kernels/test_kernel.o 
 
 CL_DEPS += \
+./kernels/imsat.d \
 ./kernels/sat.d \
 ./kernels/test_kernel.d 
 

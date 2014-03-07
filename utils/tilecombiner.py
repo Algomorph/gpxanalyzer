@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import numpy as np
-import utils.gigapan as gigapan
+import gigapan
 
 parser = argparse.ArgumentParser(description="A tool that combines 256x256 gigapan image tiles into bigger tiles.")
 parser.add_argument("--input_folder", "-i", default="test",

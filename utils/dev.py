@@ -10,6 +10,7 @@ import OpenGL.extensions as gl_ext
 import platform
 import subprocess
 import re
+import data as dm
 
 
 vendor_ids={
@@ -46,7 +47,7 @@ def list_devices():
         print "%d: %s" % (ix,device)
         ix += 1
         
-def processors_per_sm(device):
+def determine_n_processors_per_sm(device):
     if(device.type == cl.device_type.CPU):
         #TODO: dynamically determine this
         return 2;#assume two threads/CORE
@@ -56,7 +57,7 @@ def processors_per_sm(device):
         return 4;
     
         
-def determine_warp_size(device,context):
+def determine_warp_size(device,context = None):
     '''
     Determines the warp size / wavefront / work group suggested multiple for a given OpenCL device.
     This is critical information, since it determines how many operations can run launched by a 
@@ -68,9 +69,9 @@ def determine_warp_size(device,context):
     @param context: The opencl context within which the device is to be used
     '''
     #TODO: spruce up the test kernel somehow to yield better results for CPUs
-    src_file = open("kernels/test_kernel.cl","r")
-    src = src_file.read()
-    src_file.close()
+    src = dm.load_string_from_file("kernels/test_kernel.cl")
+    if(context is None):
+        context = cl.Context(devices = [device])
     test_prog = cl.Program(context,src).build()
     test_kernel = test_prog.all_kernels()[0]
 
