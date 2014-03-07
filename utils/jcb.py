@@ -18,25 +18,7 @@ monkey.patch_all()
 
 base_jcb_url = "http://v.jcb-dataviewer.glencoesoftware.com/webclient/"
 
-def getText(nodelist):
-    rc = ""
-    for node in nodelist:
-        if node.nodeType == node.TEXT_NODE:
-            rc = rc + node.data
-    return rc
-
-def find_element_value(e,name):
-    nodelist = [e]
-    while len(nodelist) > 0 :
-        node = nodelist.pop()
-        if node.nodeType == node.ELEMENT_NODE and node.localName == name:
-            return getText(node.childNodes)
-        else:
-            nodelist += node.childNodes
-
-    return None
-
-def set_up_retrieval(image_id, verbose = False):  
+def get_image_settings(image_id, verbose = False):  
     # read the kml file
     h = urllib2.urlopen(base_jcb_url+"imgData/%d"%(image_id))
     image_meta_str=h.read()
@@ -60,7 +42,7 @@ def set_up_retrieval(image_id, verbose = False):
 color_strings = {True:"1|0:255$FF0000,2|0:255$00FF00,3|0:255$0000FF&m=c",
                  False:"1|0:255$FF0000&m=g"}
 
-def fetch_tile(output_folder, image_id, zoom, x, y, tile_width, tile_height, color = False, verbose = False):
+def download_tile(output_folder, image_id, zoom, x, y, tile_width, tile_height, color = False, verbose = False):
     success = False
     col_str = color_strings[color]
     while(not success):
@@ -77,12 +59,6 @@ def fetch_tile(output_folder, image_id, zoom, x, y, tile_width, tile_height, col
         except Exception:
             print "\nConnection Error, retrying batch"
             continue
-
-def save_file(output_folder,data,x,y):
-    filename = "%04d-%04d.jpg"%(x,y)
-    fout = open(output_folder+os.path.sep+filename,"wb")
-    fout.write(data)
-    fout.close()
     
 def print_progress(i_tile, n_tiles, elapsed):
     n_done = i_tile+1
@@ -165,7 +141,7 @@ def run_batch(xs,y,output_folder, image_id, scale, tile_width, tile_height, colo
     '''
     success = False
     while(not success):
-        jobs = [gevent.spawn(fetch_tile, output_folder, image_id, scale, x, y, tile_width, tile_height, color, verbose) for x in xs]
+        jobs = [gevent.spawn(download_tile, output_folder, image_id, scale, x, y, tile_width, tile_height, color, verbose) for x in xs]
         success = handle_jobs(jobs)
         if not success: 
             print "\nTimeout, retrying batch"
@@ -206,7 +182,7 @@ if __name__ == '__main__':
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    wt, ht, tile_width, tile_height, color = set_up_retrieval(image_id, verbose = True)
+    wt, ht, tile_width, tile_height, color = get_image_settings(image_id, verbose = True)
     
     
     #exclusive bound
@@ -227,7 +203,7 @@ if __name__ == '__main__':
     
     if redownload:
         for (x,y) in bad_tiles:
-            fetch_tile(output_folder, image_id, 100, x, y, tile_width, tile_height, color, False)
+            download_tile(output_folder, image_id, 100, x, y, tile_width, tile_height, color, False)
         print "Bad tiles re-downloaded."
             
         

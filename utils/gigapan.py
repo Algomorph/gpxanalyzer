@@ -36,7 +36,7 @@ def set_up_sizes(dom):
     tile_size=int(find_element_value(dom.documentElement, "tileSize"))
     return height, width, tile_size
 
-def set_up_retrieval(image_id, verbose = False):
+def get_image_settings(image_id, verbose = False):
     
     # read the kml file
     h = urlopen(base_gigapan_url+"/gigapans/%d.kml"%(image_id))
@@ -57,7 +57,7 @@ def set_up_retrieval(image_id, verbose = False):
         print "Maximum zoom level: %d" % maxlevel 
     return wt, ht, maxlevel
 
-def fetch_tile(output_folder, image_id, maxlevel, x, y, verbose = False):
+def download_tile(output_folder, image_id, maxlevel, x, y, verbose = False):
     filename = "%04d-%04d.jpg"%(x,y)
     url = "%s/get_ge_tile/%d/%d/%d/%d"%(base_gigapan_url,image_id, maxlevel,y,x)
     print "Fetching tile %s from %s" % (filename,url)
@@ -74,8 +74,8 @@ if __name__ == '__main__':
     if not os.path.exists(str(image_id)):
         os.makedirs(str(image_id))
 
-    wt, ht, maxlevel = set_up_retrieval(image_id, verbose = True)
+    wt, ht, maxlevel = get_image_settings(image_id, verbose = True)
     #loop around to get every tile
     for y in xrange(ht):
         for x in xrange(wt):
-            fetch_tile(str(image_id),image_id,maxlevel,x,y,verbose=True)
+            download_tile(str(image_id),image_id,maxlevel,x,y,verbose=True)

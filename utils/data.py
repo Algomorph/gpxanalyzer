@@ -9,6 +9,11 @@ import re
 import numpy as np
 import pandas as pd
 
+
+class Bunch(object):
+    def __init__(self, adict):
+        self.__dict__.update(adict)
+
 IMREAD_UNCHANGED = -1;#it usually had the value -1
 if(hasattr(cv2,'IMREAD_UNCHANGED')):
     IMREAD_UNCHANGED = getattr(cv2,'IMREAD_UNCHANGED')
