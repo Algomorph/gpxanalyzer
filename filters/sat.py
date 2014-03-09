@@ -6,10 +6,10 @@ Created on Feb 24, 2014
 import pyopencl as cl
 import numpy as np
 import utils.data as dm
-import filter
+from filter import Filter
 from utils.oo import overrides
     
-class SummedAreaTableFilter(filter.Filter):
+class SummedAreaTableFilter(Filter):
     '''
     Filter for computing the summed are tables on using a specific OpenCL context.
     '''
@@ -17,7 +17,7 @@ class SummedAreaTableFilter(filter.Filter):
     def __init__(self, config, context = None):
         super(SummedAreaTableFilter,self).__init__(config,context)
         #TODO: make sure kernel works correctly on Intel/AMD CPUs and AMD graphics cards
-        sat_cl_source = dm.load_string_from_file("kernels/imsat.cl")
+        sat_cl_source = dm.load_string_from_file("kernels/sat.cl")
         self.program = cl.Program(context, sat_cl_source).build(options=str(config))
         
     def _process_cell(self, cell, queue, bufs):
