@@ -26,8 +26,8 @@
 #define INV_HEIGHT 1.0F
 #define NUM_CHANNELS 3
 #include <gpudefs.h>
-#else
-#include "include/gpudefs.h"
+//#else
+//#include "include/gpudefs.h"
 #endif
 
 //== IMPLEMENTATION ===========================================================
@@ -147,9 +147,9 @@ void vertical_aggregate(__global uint *yBar, __global uint *ySum) {
 	volatile __local uint dataBlock[ MAX_WARPS][ HALF_WARP_SIZE + WARP_SIZE + 1];
 
 	if (xLocal < HALF_WARP_SIZE)
-		dataBlock[yLocal][xLocal] = 0.f;
+		dataBlock[yLocal][xLocal] = 0;
 	else
-		dataBlock[yLocal][ln] = 0.f;
+		dataBlock[yLocal][ln] = 0;
 
 	for (int n = 1; n < N_ROWS; ++n) {
 

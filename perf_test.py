@@ -18,6 +18,7 @@ class Test(unittest.TestCase):
 
 
     def testSATspeed(self):
+        input_folder = "/media/algomorph/Data/gigapan/41509_16384"
         
         pass
 

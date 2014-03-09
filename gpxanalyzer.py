@@ -2,14 +2,13 @@
 import os
 import sys
 import argparse
-import numpy as np
 import cv2
 import pyopencl as cl
 import math
 import utils.data as data
 import utils.dev as dev
 import utils.image_size as img_sz
-import utils.tilecombiner as tilecombiner
+
 
 # command line argument parser
 parser = argparse.ArgumentParser(description='''Gigapixel Image Analyzer.''')
@@ -42,81 +41,6 @@ def run_analysis(input_folder, device_type, device_index, verbose=0):
     @type verbose: int
     @param verbose: verbosity level
     '''
-    tile_names = data.get_raster_names(input_folder)
-    
-    
-    num_image_channels = 3
-    # avail_memory_divisor determines the fraction of available memory to use for buffer
-    # we want the fraction to be smaller in case of CPU, because we're then basically using the same 
-    # memory twice -- on the device and on the host
-    if(device_type == cl.device_type.CPU):
-        avail_memory_divisor = 4
-    else:
-        avail_memory_divisor = 2
-    if(len(tile_names) < 0):
-        raise RuntimeError("""Could not find image tiles in \"\s.\"
-Please ensure the path is correct and images have jpg/png format and extensions.""" 
-        % input_folder)
-    first_tile_name = tile_names[0]
-    
-    # assess size of the tiles (assuming all tiles are the same size)
-    (tile_height, tile_width) = img_sz.get_image_size(input_folder + os.path.sep + first_tile_name)
-    if(verbose > 0):
-        print "Tile Dimensions\nsize: %d, %d" % (tile_height, tile_width)
-    tile_size = max(tile_height,tile_width)
-    
-    devices = dev.get_devices_of_type(device_type)
-    
-    if(len(devices) < 1):
-        raise ValueError("""No devices of type %s found on the system.
-Perhaps, try specifying a different device type?""")
-    # get device based on specified index
-    device = devices[device_index]
-    print "Using device \"%s\"" % device.name
-    
-    bytes_in_mb = (1024 ** 2)  # ==2**20
-    # create OpenCL context
-    context = cl.Context(devices=[device])
-    # retrieve device memory information
-    global_mem = device.global_mem_size
-    local_mem = device.local_mem_size
-    wg_size = device.get_info(cl.device_info.MAX_WORK_GROUP_SIZE)
-    num_sms = device.get_info(cl.device_info.MAX_COMPUTE_UNITS)
-    determine_n_processors_per_sm = dev.determine_n_processors_per_sm(device)
-    max_threads = determine_n_processors_per_sm * num_sms
-    
-    
-    # retrieve warp/wavefront size (or # of hardware threads in case of CPU)
-    warp_size = dev.determine_warp_size(device, context)
-    if(verbose > 0):
-        print """\nDevice Information
-  Global Memory Size: {0:0d} MiB
-  Local/Workgroup Memory Size: {1:0d} KiB
-  Warp/Wavefront: {2:0d}
-  Max Workgroup Size: {3:0d}
-  Number of Streaming Multiprocessors: {4:0d}
-  Best guess for number of processors per SM: {5:0d}
-  Best guess for maximum concurrent execution paths: {6:0d}"""\
-        .format(global_mem / bytes_in_mb, 
-                local_mem / 1024, warp_size,
-                wg_size,
-                num_sms, 
-                determine_n_processors_per_sm,
-                max_threads)
-        
-    # determine size of OpenCL buffers
-    # best guess for used VRAM
-    avail_mem = dev.estimate_available_device_memory(device, verbose=verbose > 0)
-    
-    #>>HENCEFORTH in the code, all the tiles for the OpenCL device are referred to as "cells"
-    #>>The tiles loaded into memory are still called "tiles"
-    #>>Printed information messages use "tiles" but are more explicit about which ones.
-    #the divisior '4' signifies 4 bytes / uint32, since computations will be done in uint32
-    cell_size = 2 ** int(math.log(math.sqrt(avail_mem / avail_memory_divisor / 4)) / math.log(2))
-    input_buf_size = cell_size * cell_size * 4
-    if(verbose > 0):
-        print "Limiting tile size for device to {0:0d} x {0:0d} pixels ({1:0d} MiB input buffer)."\
-        .format(cell_size, input_buf_size / bytes_in_mb)
     
     #TODO: for now, convert to floats and run old sat.cl. Later, switch up the kernels to load the texture instead.
     #traverse the file tiles

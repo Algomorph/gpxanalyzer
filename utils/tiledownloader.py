@@ -4,24 +4,24 @@ Created on Mar 7, 2014
 @author: algomorph
 '''
 
+from gevent import monkey; monkey.patch_all()
+import gevent
+from data import Bunch
 import abc
 from xml.dom.minidom import parseString
-from data import Bunch
-from gevent import monkey
-
 import sys
 import math
 import os
 import urllib2
 import json
 import psutil
-import gevent
+
 import time
 import cv2
 import console
 #import argparse
 
-monkey.patch_all()
+
 
 class TileDownloader:
     '''

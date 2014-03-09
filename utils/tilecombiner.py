@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import tiledownloader
 import argparse
 import cv2
 import os
@@ -7,7 +8,7 @@ import sys
 import numpy as np
 import time
 #TODO: reorganize class structure to make gigiapan & jcb downloaders implement the same abstract class
-import tiledownloader
+
 
 
 downloaders_by_data_source = {"gigapan":tiledownloader.GigapanTileDownloader(),

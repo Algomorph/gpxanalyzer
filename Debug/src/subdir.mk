@@ -4,15 +4,15 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
-../src/gpuanalysisfilters.cpp \
+../src/filters.cpp \
 ../src/main.cpp 
 
 OBJS += \
-./src/gpuanalysisfilters.o \
+./src/filters.o \
 ./src/main.o 
 
 CPP_DEPS += \
-./src/gpuanalysisfilters.d \
+./src/filters.d \
 ./src/main.d 
 
 

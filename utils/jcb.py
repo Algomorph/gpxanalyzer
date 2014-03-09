@@ -8,13 +8,13 @@ import urllib2
 import json
 import sys,os
 import psutil
-import gevent
 from gevent import monkey
 import time
 import argparse
 import cv2
 import console
 monkey.patch_all()
+import gevent
 
 base_jcb_url = "http://v.jcb-dataviewer.glencoesoftware.com/webclient/"
 
