@@ -1,18 +1,14 @@
 #!/usr/bin/env python
 import tiledownloader
 import argparse
-import cv2
 import os
 import re
 import sys
-import numpy as np
+from PIL import Image
+import image_size as imz
 import time
-#TODO: reorganize class structure to make gigiapan & jcb downloaders implement the same abstract class
-
-
-
-downloaders_by_data_source = {"gigapan":tiledownloader.GigapanTileDownloader(),
-                              "jcb":tiledownloader.JCBTileDownloader()}
+import gc
+import data as dm
 
 parser = argparse.ArgumentParser(description="A tool that combines small image tiles into bigger tiles.")
 parser.add_argument("--input_folder", "-i", default="test",
@@ -20,12 +16,15 @@ parser.add_argument("--input_folder", "-i", default="test",
 parser.add_argument("--output_folder", "-o", default="test_output",
                     help="path to folder for the output tiles")
 parser.add_argument("--size", "-s", type=int, default=16384,
-                    help="width/height of the resulting tiles")
-parser.add_argument("--data_source", "-ds", default=downloaders_by_data_source.keys()[0],metavar="DATA_SOURCE",
-                    choices=downloaders_by_data_source.keys(),
+                    help="pixel width/height of the resulting tiles before resizing (if any)")
+parser.add_argument("--resize", "-r", type=int, default=-1,
+                    help="width/height to resize the tiles to.")
+parser.add_argument("--data_source", "-ds", default=tiledownloader.downloaders_by_data_source.keys()[0],
+                    metavar="DATA_SOURCE",
+                    choices=tiledownloader.downloaders_by_data_source.keys(),
                     help="original data source of the tiles. can be one of: %s" 
-                    % str(downloaders_by_data_source.keys()))
-
+                    % str(tiledownloader.downloaders_by_data_source.keys()))
+    
 def get_raster_names(directory):
     names = os.listdir(directory)
     names.sort()
@@ -63,25 +62,21 @@ def print_progress(i_tile, n_tiles, elapsed, x, y):
                 ),
         sys.stdout.flush()
         print "\r",
-
-def combine_tiles(input_folder, output_folder, tile_size, downloader):
+        
+def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, downloader):
     # !!>>> original small tiles are referred to as "cells"
     # !!>>> output tiles are referred to as "tiles"
     # load one file to assess the cell size
     
     img_names = get_raster_names(input_folder)
-    img = cv2.imread(input_folder + os.path.sep + img_names[0])
+    first_tile_path = input_folder + os.path.sep + img_names[0]
+    cell_width, cell_height, num_channels = imz.get_image_size(first_tile_path)    
     
-    cell_width = img.shape[1]
-    cell_height = img.shape[0]
     
-    if(img.shape[0] != img.shape[1]):
+    if(cell_width!= cell_height):
         raise ValueError("Only square input tiles of equal size supported! Found tile at %d x %d px." 
-                         % (img.shape[0], img.shape[1]))
-    cell_size = img.shape[0]
-    num_channels = 1
-    if len(img.shape)>2:
-        num_channels = img.shape[2]
+                         % (cell_width, cell_height))
+    cell_size = cell_width
     
     print "Cell shape: %s\nNumber of channels: %d" % (str((cell_size,cell_size)),num_channels)
     
@@ -113,36 +108,49 @@ def combine_tiles(input_folder, output_folder, tile_size, downloader):
     if(not os.path.exists(output_folder)):
         os.makedirs(output_folder)
 
-    # loop through the tiles
-    start_cell_x = 0
-    end_cell_x = min(side_cell_count, n_cells_x - 1)
+    
     retrieval_set_up = False
     image_id = None
     settings = None
     start = time.time()
     i_cell = 0
     n_cells = n_cells_x*n_cells_y
+    
+    if(num_channels == 1):
+        new_tile_mode = 'L'
+    elif(num_channels == 2):
+        new_tile_mode = 'LA'
+    elif(num_channels == 3):
+        new_tile_mode = 'RGB'
+    elif(num_channels == 4):
+        new_tile_mode = 'RGBA'
+    else:
+        raise ValueError("Unsupported number of channels for input tiles: %d" % num_channels)
+    
+    resize = lambda img: img
+    if(tile_to_size > 0):
+        resize = lambda img: img.resize((int(float(img.size[0])/tile_size*tile_to_size),
+                                            int(float(img.size[1])/tile_size*tile_to_size)))
+    # loop through the tiles
+    start_cell_x = 0
+    end_cell_x = min(side_cell_count, n_cells_x - 1)
     for tile_x in range(0, n_tiles_x):
         start_cell_y = 0
         end_cell_y = min(side_cell_count, n_cells_y - 1)
         for tile_y in range(0, n_tiles_y):
             output_file_name = "{0:04d}-{1:04d}.png".format(tile_x, tile_y)
             output_tile_path = output_folder + os.path.sep + output_file_name
-            if os.path.isfile(output_tile_path) and cv2.imread(output_tile_path) is not None:
+            if os.path.isfile(output_tile_path) and dm.check_image(output_tile_path, True):
                 print "Skipping output tile %s, previously done and verified" %output_file_name
+                n_cells -= (end_cell_y - start_cell_y)*(end_cell_x - start_cell_x)
             else:
-                # allocate tile
-                if(num_channels == 1):
-                    tile = np.zeros(((end_cell_y - start_cell_y) * cell_size, 
-                                     (end_cell_x - start_cell_x) * cell_size), 
-                                    dtype=np.uint8)
-                else:
-                    tile = np.zeros(((end_cell_y - start_cell_y) * cell_size, 
-                                     (end_cell_x - start_cell_x) * cell_size, 
-                                     num_channels), 
-                                    dtype=np.uint8)
+                tile_shape = ((end_cell_y - start_cell_y) * cell_size, 
+                                     (end_cell_x - start_cell_x) * cell_size)
+                tile = Image.new(new_tile_mode,tile_shape)
                 # loop through the cells
                 local_x = 0
+                #print start_cell_x, end_cell_x
+                #print start_cell_y, end_cell_y
                 for cell_x in range(start_cell_x, end_cell_x):
                     local_y = 0
                     for cell_y in range(start_cell_y, end_cell_y):
@@ -150,11 +158,14 @@ def combine_tiles(input_folder, output_folder, tile_size, downloader):
                         input_file_name = "{0:04d}-{1:04d}.jpg".format(cell_x, cell_y)
                         full_img_path = input_folder + os.path.sep + input_file_name
                         #print full_img_path
-                        img = cv2.imread(full_img_path)
+                        try:
+                            img = Image.open(full_img_path)
+                        except IOError:
+                            img = None
                         #if there's no image, try to reload it
-                        if(img is None or img.shape != (cell_width,cell_height)
+                        if(img is None or img.size != (cell_width,cell_height)
                            and img.shape != (cell_width,cell_height,num_channels)):
-                            print "Unable to open image %s. Attempting to load it from gigapan." % input_file_name
+                            print "Unable to open image %s. Attempting to load it from original source." % input_file_name
                             if(not retrieval_set_up):
                                 photo_id_re = re.compile("\d+$")
                                 #TODO: add capability for user to name the gigapan image id
@@ -164,21 +175,25 @@ def combine_tiles(input_folder, output_folder, tile_size, downloader):
                             #fetch from gigiapan
                             downloader.download_tile(settings, image_id, cell_x, cell_y, input_folder,verbose = True)
                             #re-read
-                            img = cv2.imread(full_img_path)
+                            img = Image.open(full_img_path)
                             
                         # fill in the corresponding pixels in the output tile
-                        np.copyto(tile[local_y:local_y + cell_size, local_x:local_x + cell_size],img)
+                        tile.paste(img, (local_x,local_y,local_x + cell_size,local_y + cell_size))
                         print_progress(i_cell, n_cells, time.time() - start, cell_x, cell_y) 
                         i_cell +=1
                         local_y += cell_size
                     local_x += cell_size
                 #end cell loop
                 # write output tile to disk
-                cv2.imwrite(output_tile_path, tile)
+                tile = resize(tile)
+                tile.save(output_tile_path, "PNG")
+                del tile
+                gc.collect()
             start_cell_y = end_cell_y
-            end_cell_y = min(side_cell_count + side_cell_count, n_cells_y - 1)
+            end_cell_y = min(end_cell_y + side_cell_count, n_cells_y - 1)
         start_cell_x = end_cell_x
         end_cell_x = min(end_cell_x + side_cell_count, n_cells_x - 1)
+    print "\nDone"
 
 
 if __name__ == '__main__':
@@ -186,8 +201,9 @@ if __name__ == '__main__':
     tile_size = args.size
     input_folder = args.input_folder 
     output_folder = args.output_folder
-    downloader = downloaders_by_data_source[args.data_source] 
-    combine_tiles(input_folder, output_folder, tile_size,downloader)
+    resize = args.resize
+    downloader = tiledownloader.downloaders_by_data_source[args.data_source] 
+    combine_tiles(input_folder, output_folder, tile_size,resize,downloader)
         
     
     

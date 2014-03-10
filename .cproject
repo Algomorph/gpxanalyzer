@@ -63,9 +63,6 @@
 							</tool>
 						</toolChain>
 					</folderInfo>
-					<fileInfo id="cdt.managedbuild.config.gnu.exe.debug.735742983.101199198" name="test_kernel.cl" rcbsApplicability="disable" resourcePath="kernels/test_kernel.cl" toolsToInvoke="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.668429790.306974916">
-						<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.668429790.306974916" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.668429790"/>
-					</fileInfo>
 					<sourceEntries>
 						<entry excluding="kernels/test_kernel.cl|kernels/sat.cl|kernels/imsat.cl" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>

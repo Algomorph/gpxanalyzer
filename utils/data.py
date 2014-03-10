@@ -8,6 +8,8 @@ import os
 import re
 import numpy as np
 import pandas as pd
+from PIL import Image
+import gc
 
 
 class Bunch(object):
@@ -19,6 +21,18 @@ if(hasattr(cv2,'IMREAD_UNCHANGED')):
     IMREAD_UNCHANGED = getattr(cv2,'IMREAD_UNCHANGED')
 elif(hasattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')):
     IMREAD_UNCHANGED = getattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')
+
+
+def check_image(path, verbose = False):
+    try:
+        img = Image.open(path)
+    except IOError:
+        if(verbose):
+            print "Failed to verify image %s." % path
+        return False
+    del img
+    gc.collect()
+    return True
 
 def load_string_from_file(path):
     src_file = open(path,"r")

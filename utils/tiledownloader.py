@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 '''
 Created on Mar 7, 2014
 
@@ -15,10 +17,12 @@ import os
 import urllib2
 import json
 import psutil
-
 import time
-import cv2
+from PIL import Image
 import console
+import argparse
+import gc
+from memory_profiler import profile
 #import argparse
 
 
@@ -43,6 +47,11 @@ class TileDownloader:
             settings = self.retrieve_image_settings(image_id, verbose)
         if(tile_range is None):
             tile_range = [0,settings.n_cells_x,0,settings.n_cells_y]
+        else:
+            if(tile_range[1] < 0):
+                tile_range[1] = settings.n_cells_x
+            if(tile_range[3] < 0):  
+                tile_range[3] = settings.n_cells_y
         return settings, tile_range
 
 class GigapanTileDownloader(TileDownloader):
@@ -103,6 +112,11 @@ class GigapanTileDownloader(TileDownloader):
         fout.close()
         
     def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verbose = False):
+        if(output_folder is None):
+            output_folder = str(image_id)
+        #create output folder if such doesn't exist
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
         settings, tile_range = self.set_up_range_and_settings(settings, tile_range, image_id, verbose)
         for y in xrange(tile_range[2],tile_range[3]):
             for x in xrange(tile_range[0],tile_range[1]):
@@ -185,6 +199,7 @@ class JCBTileDownloader(TileDownloader):
         return folder+os.path.sep+filename
     
     #TODO: check methods should be generic for all TileDownloaders - include in abastract base class
+    @profile
     def check_what_is_done(self, width, start_y, end_y, output_folder):
         print "Checking progress..."
         #check what's ready
@@ -200,6 +215,16 @@ class JCBTileDownloader(TileDownloader):
                 break
         return x, y
     
+    def __check_file(self,path):
+        try:
+            img = Image.open(path)
+        except IOError:
+            print "Failed to open image %s. Adding to re-download list." % path
+            return False
+        del img
+        gc.collect()
+        return True
+    
     def check_what_is_done_and_verify(self, width, start_y, end_y, output_folder):
         '''
         Checks the progress up to this point (in terms of which files exist)
@@ -212,19 +237,23 @@ class JCBTileDownloader(TileDownloader):
         check_next_row = True
         x = 0; y = start_y
         bad_tiles = []
+        n_tiles = (end_y - start_y)*width
+        i_tile = 0
+        start = time.time()
         for y in xrange(start_y,end_y):
             for x in xrange(width):
-                path = self.gen_file_path(x,y,output_folder)
+                path = self.__gen_file_path(x,y,output_folder)
                 if(not os.path.isfile(path)):
                     check_next_row = False
                     break
                 else:
-                    img = cv2.imread(path)
-                    if img is None:
-                        print "Failed to open image %s. Adding to re-download list." % path
+                    if not self.__check_file(path):
                         bad_tiles.append((x,y))
+                i_tile+=1
+                self.print_progress(i_tile,n_tiles,time.time()-start)
             if(not check_next_row):
                 break
+        print "Tile Verification Complete"
         return x, y, bad_tiles
     
     def handle_jobs(self,jobs):
@@ -250,9 +279,9 @@ class JCBTileDownloader(TileDownloader):
         '''
         success = False
         while(not success):
-            jobs = [gevent.spawn(self.download_tile, self, 
+            jobs = [gevent.spawn(self.download_tile,  
                                  settings, image_id, x, y, output_folder,
-                                 verbose= False) for x in xs]
+                                 verbose = False) for x in xs]
             success = self.handle_jobs(jobs)
             if not success: 
                 print "\nTimeout, retrying batch"
@@ -266,7 +295,7 @@ class JCBTileDownloader(TileDownloader):
         end_y=tile_range[3]
         
         #TODO: add support for x ranges
-        if(tile_range[0] != 0 or tile_range[1] != 0):
+        if(tile_range[0] > 0 or tile_range[1] > 0):
             print "Warning: x range is not yet supported by the JCBTileDownloader"
         
         if(output_folder is None):
@@ -352,3 +381,33 @@ class JCBTileDownloader(TileDownloader):
                 self.print_progress(i_tile, n_tiles, time.time() - start)
         if(verbose):
             print "\nDone."
+            
+downloaders_by_data_source = {"gigapan":GigapanTileDownloader(),
+                              "jcb":JCBTileDownloader()}
+
+parser = argparse.ArgumentParser(description="A tool that retrieves color/greyscale 256x256 from the jcb (Journal of Cell Biology) website.")
+parser.add_argument("--output_folder", "-o", default=None,
+                    help="path to folder for the downloaded tiles")
+parser.add_argument("--image_id", "-id", type=int, default=201,
+                    help="id of the image to retrieve")
+parser.add_argument("--start_row", "-s", type=int, default=-1,
+                    help="tile row to start with")
+parser.add_argument("--end_row", "-e", type=int, default=-1,
+                    help="tile row to end with")
+parser.add_argument("--verify", "-V", action="store_true", default=False, 
+                    help="verify the already-loaded tiles by opening them")
+parser.add_argument("--data_source", "-ds", default=downloaders_by_data_source.keys()[0],
+                    metavar="DATA_SOURCE",
+                    choices=downloaders_by_data_source.keys(),
+                    help="Data source of the tiles. can be one of: %s" 
+                    % str(downloaders_by_data_source.keys()))
+
+if __name__ == '__main__':
+    args = parser.parse_args(sys.argv[1:])
+    output_folder = args.output_folder
+    image_id = args.image_id
+    tile_range = [0,args.start_row,0,args.end_row]
+    downloader = downloaders_by_data_source[args.data_source]
+    if(args.verify):
+        downloader.verify = True
+    downloader.download_tiles(image_id, output_folder,tile_range=tile_range, verbose = True)
