@@ -33,3 +33,8 @@ def query_yes_no(question, default="yes"):
         else:
             sys.stdout.write("Please respond with 'yes' or 'no' "\
                              "(or 'y' or 'n').\n")
+            
+CURSOR_UP_ONE = '\x1b[1A'
+ERASE_LINE = '\x1b[2K'
+def erase_line():
+    print(CURSOR_UP_ONE + ERASE_LINE)

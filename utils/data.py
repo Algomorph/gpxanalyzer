@@ -23,12 +23,16 @@ elif(hasattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')):
     IMREAD_UNCHANGED = getattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')
 
 
-def check_image(path, verbose = False):
+def check_image(path, shape, verbose = False):
     try:
         img = Image.open(path)
+        if(img.size != shape):
+            if(verbose):
+                print "Wrong size for image {0:s}. Expected {1:s}, got {2:s}.\n".format(path,str(shape),str(img.size))
+            return False
     except IOError:
         if(verbose):
-            print "Failed to verify image %s." % path
+            print "Failed to open image %s.\n" % path
         return False
     del img
     gc.collect()
