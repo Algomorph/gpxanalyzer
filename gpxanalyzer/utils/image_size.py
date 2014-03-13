@@ -6,6 +6,7 @@
 #
 # Created:     26/09/2013
 # Copyright:   (c) Paulo Scardine 2013
+# Copyright:   (c) Gregory Kramida 2014
 # Licence:     MIT
 #-------------------------------------------------------------------------------
 #!/usr/bin/env python
@@ -93,7 +94,7 @@ def get_image_size(file_path):
             reserved = input.read(2)
             if 0 != struct.unpack("<H", reserved )[0]:
                 raise UnknownImageFormat(FILE_UNKNOWN)
-            format = input.read(2)
+            input.read(2)#format
             assert 1 == struct.unpack("<H", format)[0]
             num = input.read(2)
             num = struct.unpack("<H", num)[0]

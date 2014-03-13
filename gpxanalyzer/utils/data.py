@@ -3,7 +3,6 @@ Created on Jun 11, 2013
 
 @author: Gregory Kramida
 '''
-import cv2
 import os
 import re
 import numpy as np
@@ -11,16 +10,13 @@ import pandas as pd
 from PIL import Image
 import gc
 
-
 class Bunch(object):
     def __init__(self, adict):
         self.__dict__.update(adict)
 
-IMREAD_UNCHANGED = -1;#it usually had the value -1
-if(hasattr(cv2,'IMREAD_UNCHANGED')):
-    IMREAD_UNCHANGED = getattr(cv2,'IMREAD_UNCHANGED')
-elif(hasattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')):
-    IMREAD_UNCHANGED = getattr(cv2,'CV_LOAD_IMAGE_UNCHANGED')
+def get_subfolders(path):
+    return [name for name in os.listdir(path)
+        if os.path.isdir(os.path.join(path, name))]
 
 
 def check_image(path, shape, verbose = False):
@@ -66,7 +62,7 @@ def load_rasters_from_dir(directory, names = None):
         names = get_raster_names(directory)
         
     for name in names:
-        rasters.append(cv2.imread(directory + os.path.sep + name,IMREAD_UNCHANGED))
+        rasters.append(Image.open(directory + os.path.sep + name))
     return rasters
 
 def load_numbered_rasters_from_dir(directory, names = None, numbers = None, verbose = 0):
@@ -90,16 +86,16 @@ def load_numbered_rasters_from_dir(directory, names = None, numbers = None, verb
             numbers.append(num)
         if(verbose > 0):
             print "Loading raster %d" % num
-        images.append(cv2.imread(directory + os.path.sep + name,IMREAD_UNCHANGED))
+        images.append(Image.open(directory + os.path.sep + name))
         
         ix_name += 1
     return images, numbers
 
-def save_rasters_to_dir(directory, images, names=None):
+def save_rasters_to_dir(directory, rasters, names=None):
     if(not names):
         names = get_raster_names(directory)
     for ix in xrange(0,len(names)):
-        cv2.imwrite(directory + os.path.sep + names[ix],images[ix])
+        rasters[ix].save(directory + os.path.sep + names[ix],'PNG')
 
 def load_data_from_path(path, create_if_missing = True):
     '''

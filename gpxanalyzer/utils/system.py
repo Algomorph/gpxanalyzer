@@ -5,7 +5,6 @@ Created on Feb 24, 2014
 '''
 import psutil
 import pyopencl as cl
-import OpenGL
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
 import OpenGL.extensions as gl_ext
@@ -119,7 +118,7 @@ def get_devices_of_type(device_type):
     return devices
 
 
-def estimate_available_device_memory(device, verbose = False):
+def estimate_available_cl_device_memory(device, verbose = False):
     '''
     Estimates the currently-available device global memory amount.
     Currently only gives exact result for CPUs and NVIDIA Graphics Cards.
