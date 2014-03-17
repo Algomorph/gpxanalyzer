@@ -36,8 +36,12 @@ def setting_bunch_to_hash(setting_bunch):
     return setting_hash
 
 class AdvancedConfigParser(ConfigParser.ConfigParser):
-    def __init__(self,defaults = None, dict_type = None, allow_no_value = None):
-        super(AdvancedConfigParser,self).__init__(defaults, dict_type, allow_no_value)
+    
+#     def __init__(self,defaults = None, dict_type = None, allow_no_value = None):
+#         """
+#         Builds an AdvancedConfigParser
+#         """
+#         super(AdvancedConfigParser,self).__init__(defaults, dict_type, allow_no_value)
         
     def _parse_byte_size(self,str_opt):
         designators = re.findall('\d+(\w*)',str_opt, re.IGNORECASE)
@@ -80,11 +84,15 @@ def load_config(directory):
     path = directory + CONFIG_FILE_NAME
     if os.path.isfile(path):
         config = AdvancedConfigParser(default_setting_hash)
-        config.read(path)
+        conf_file = open(path)
+        config.read(conf_file)
+        conf_file.close()
         return config.to_bunch()
     else:
         config = AdvancedConfigParser(default_setting_hash)
-        config.write(path)
+        conf_file = open(path, "w")
+        config.write(conf_file)
+        conf_file.close()
     return config.to_bunch()
         
     
