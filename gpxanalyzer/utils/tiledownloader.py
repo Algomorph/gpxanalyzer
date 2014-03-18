@@ -77,7 +77,7 @@ class TileDownloader:
                 print "\nTimeout/Error, retrying batch"
         return True
 
-    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verify = False, batch_size, verbose = False):
+    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verify = False, batch_size = psutil.NUM_CPUS*2, verbose = False):
         settings, tile_range = self.set_up_range_and_settings(settings, tile_range, image_id, verbose)
         
         (start_x,end_x,start_y,end_y) = tile_range
@@ -398,4 +398,7 @@ if __name__ == '__main__':
         output_folder = str(args.image_id)
     tile_range = [args.start_column,args.end_column,args.start_row,args.end_row]
     downloader = downloaders_by_data_source[args.data_source]
-    downloader.download_tiles(args.image_id, output_folder,tile_range=tile_range, verify=args.verify, args.batch_size, verbose = True)
+    downloader.download_tiles(args.image_id, output_folder,
+                              tile_range=tile_range, 
+                              verify=args.verify, 
+                              batch_size=args.batch_size, verbose = True)
