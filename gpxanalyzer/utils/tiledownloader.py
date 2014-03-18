@@ -49,9 +49,10 @@ class TileDownloader:
         gevent.joinall(jobs,timeout=20)
         success = True
         for job in jobs:
-            if not job.ready():
+            if not job.successful():
                 success = False
-                job.kill()
+                if not job.ready():
+                    job.kill()
         return success
     
     def run_batch(self, settings, image_id, xs, y, output_folder, verbose = False):
@@ -73,10 +74,10 @@ class TileDownloader:
                                  verbose = False) for x in xs]
             success = self.handle_jobs(jobs)
             if not success: 
-                print "\nTimeout, retrying batch"
+                print "\nTimeout/Error, retrying batch"
         return True
 
-    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verify = False, verbose = False):
+    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verify = False, batch_size, verbose = False):
         settings, tile_range = self.set_up_range_and_settings(settings, tile_range, image_id, verbose)
         
         (start_x,end_x,start_y,end_y) = tile_range
@@ -107,7 +108,6 @@ class TileDownloader:
             if(verbose):
                 print "Bad tiles re-downloaded."
 
-        batch_size = psutil.NUM_CPUS*2
         do_extra_batch = False
         
         work_width = end_x - start_x
@@ -129,6 +129,7 @@ class TileDownloader:
         if(verbose):
             print "Starting from tile %04d-%04d.jpg" % (start_first_row_at, start_y)
             print "Ending after tile %04d-%04d.jpg" % (end_x-1, end_y-1)
+            print "Using batch size: " + str(batch_size)
         #loop to get the first row
         y = start_y
         
@@ -372,14 +373,14 @@ parser.add_argument("--output_folder", "-o", default=None,
                     help="path to folder for the downloaded tiles")
 parser.add_argument("--image_id", "-id", type=int, default=201,
                     help="id of the image to retrieve")
-parser.add_argument("--start_row", "-s", type=int, default=0,
+parser.add_argument("--start_row", "-sr", type=int, default=0,
                     help="tile row to start with")
-parser.add_argument("--end_row", "-e", type=int, default=-1,
+parser.add_argument("--end_row", "-er", type=int, default=-1,
                     help="tile row to end with")
 parser.add_argument("--start_column", "-sc", type=int, default=0,
-                    help="tile row to start with")
+                    help="tile column to start with")
 parser.add_argument("--end_column", "-ec", type=int, default=-1,
-                    help="tile row to end with")
+                    help="tile column to end with")
 parser.add_argument("--verify", "-V", action="store_true", default=False, 
                     help="verify the already-loaded tiles by opening them")
 parser.add_argument("--data_source", "-ds", default=downloaders_by_data_source.keys()[0],
@@ -387,6 +388,8 @@ parser.add_argument("--data_source", "-ds", default=downloaders_by_data_source.k
                     choices=downloaders_by_data_source.keys(),
                     help="Data source of the tiles. can be one of: %s" 
                     % str(downloaders_by_data_source.keys()))
+parser.add_argument("--batch_size", "-s", type=int, default=psutil.NUM_CPUS*2,
+                    help="speed/batch size: how many tiles to try to open at once.")
 
 if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
@@ -395,4 +398,4 @@ if __name__ == '__main__':
         output_folder = str(args.image_id)
     tile_range = [args.start_column,args.end_column,args.start_row,args.end_row]
     downloader = downloaders_by_data_source[args.data_source]
-    downloader.download_tiles(args.image_id, output_folder,tile_range=tile_range, verify=args.verify, verbose = True)
+    downloader.download_tiles(args.image_id, output_folder,tile_range=tile_range, verify=args.verify, args.batch_size, verbose = True)
