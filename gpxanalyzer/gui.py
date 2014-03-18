@@ -1,9 +1,7 @@
 from PySide import QtCore, QtGui
-#import numpy as np
-import tiles
 import tilecloud
 import gc
-
+import tiles
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
     def __init__(self, config):

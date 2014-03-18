@@ -13,3 +13,4 @@
 *.la
 *.a
 *.pyc
+/Debug
