@@ -99,6 +99,7 @@ static inline int* refcountFromPyObject(const PyObject* obj)
 {
     return (int*)((size_t)obj + REFCOUNT_OFFSET);
 }
+typedef int UMatUsageFlags;
 
 class NumpyAllocator : public MatAllocator
 {

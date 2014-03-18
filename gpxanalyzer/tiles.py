@@ -2,6 +2,8 @@
 Created on Mar 13, 2014
 
 @author: Gregory Kramida
+@license: GNU v3
+@copyright: 2014
 '''
 
 
@@ -13,38 +15,57 @@ from PIL import ImageFile
 from PySide import QtGui,QtCore
 
 full_tile_size = 256
+half_tile_size = 128
+
+def PIL_to_QImage(pil_img):
+    #TODO: add layer alpha support
+    raw_data = pil_img.tostring('raw','RGB')
+    qimage = QtGui.QImage(raw_data, pil_img.size[0], pil_img.size[1], QtGui.QImage.Format_RGB888)
+    return qimage;
 
 class QTiledLayerViewer(QtGui.QWidget):
-    def __init__(self):
+    def __init__(self, first_layer = None):
         super(QTiledLayerViewer,self).__init__()
+        if(first_layer != None):
+            self.layers = [first_layer]
+        else:
+            self.layers = []
+        self.set_up_ui()
+        
+    def set_up_ui(self):
+        self.setMinimumSize(512,512)
         self.cache = {}
-        self.layers = []
-        self.initUI()
         self.root = TileCoord(0, 0, 0)
-        self.zoom = 0.0
+        self.zoom = 1.0
         self.top_left = (0,0)
-        
-        
-    def initUI(self):
-        self.setMinimumSize(1, 30)
+        self.start_x = 0
+        self.start_y = 0
+        self.start_mouse_x = 0
+        self.start_mouse_y = 0
         self.tile_scale = 0
         self.pos = (0,0)
     
-    def tile(self, index, z, x, y):
-        # FIXME check ext
+    def tile(self, index, z, x, y, tile_size):
+        #TODO: add layer alpha support
         root = self.root
         cache = self.cache
         tilecoord = TileCoord(z + root.z,
                               x + root.x * (1 << z),
                               y + root.y * (1 << z))
-        if self.cache is not None and (index, z, x, y) in cache:
-            tile = self.cache[(index, z, x, y)]
+        if (index, z, x, y) in cache:
+            image = self.cache[(index, z, x, y)]
         else:
             tile = Tile(tilecoord)
-            tile = self.layers[index].get_qimage(tile)
-            if self.cache is not None:
-                self.cache[(index, z, x, y)] = tile
-        return tile
+            image = self.layers[index].get_PIL_image(tile)
+            if self.cache is not None and image is not None:
+                self.cache[(index, z, x, y)] = image
+        if image is not None:
+            if(tile_size != full_tile_size):
+                new_size = (int(float(image.size[0]) / full_tile_size * tile_size),
+                            int(float(image.size[1]) / full_tile_size * tile_size))
+                image = image.resize(new_size)
+            return PIL_to_QImage(image)
+        return None
     
     def __setitem__(self,index,layer):
         self.layers[index] = layer
@@ -54,6 +75,7 @@ class QTiledLayerViewer(QtGui.QWidget):
     
     def add_layer(self,layer):
         self.layers.append(layer)
+        self.repaint()
     
     def insert_layer(self,index,layer):
         self.layers.insert(index, layer)
@@ -62,86 +84,141 @@ class QTiledLayerViewer(QtGui.QWidget):
         for layer in self.layers:
             yield layer
             
-    def get_layer_constraints(self):
-        self.zoom
+    def __tile_size_by_zoom(self,zoom):
+        #get the next-higher-up whole zoom level
+        tile_zoom = int(math.ceil(zoom))
+        zoom_ratio = zoom % 1.0
+        if(zoom_ratio == 0.0):
+            tile_size = full_tile_size
+        #if the fraction is below 1/256, use the previous whole zoom level
+        elif(zoom_ratio < 1.0 / full_tile_size):
+            tile_zoom -= 1
+            tile_size = full_tile_size 
+        else:
+            tile_size = int(half_tile_size + half_tile_size * zoom_ratio)
+        return tile_size, tile_zoom
+            
+    def __size_by_zoom(self,zoom):
+        tile_size, tile_zoom = self.__tile_size_by_zoom(zoom)
+        tiles_per_side = 2**tile_zoom
+        return tile_size * tiles_per_side
         
-    #def draw_tile(self,index,tile_x,tile_y,tile_z,rect):
+    def wheelEvent(self,event):
+        #TODO: smooth zoom animations, as in gigapan.com
+        numDegrees = float(event.delta()) / 8
+        numSteps = numDegrees / 15
+        last_zoom = self.zoom
+        self.zoom = max(0.0,self.zoom + numSteps / 4)
+        pt = event.pos()
+        x, y = pt.x(), pt.y()
+        last_offset_x = self.top_left[0] - x
+        last_offset_y = self.top_left[1] - y
+        size_ratio = float(self.__size_by_zoom(self.zoom)) / self.__size_by_zoom(last_zoom)        
+        new_offset_x = int(last_offset_x * size_ratio)
+        new_offset_y = int(last_offset_y * size_ratio)
+        self.top_left = (x + new_offset_x, y + new_offset_y)
+        self.repaint()
         
-    def paintEvent(self,e):
+    def paintEvent(self,event):
         qp = QtGui.QPainter()
-        qp.begin()
+        qp.begin(self)
         self.draw_widget(qp)
         qp.end()
         
-    def draw_layer(self,ix_layer,qp):
-        size=self.size()
+    def mousePressEvent(self,event):
+        if(event.button() == QtCore.Qt.MiddleButton):
+            pt = event.pos()
+            (self.start_mouse_x, self.start_mouse_y) = (pt.x(),pt.y()) 
+            (self.start_x, self.start_y) = self.top_left
+            
+    def mouseMoveEvent(self,event):
+        #TODO: smooth mouse animations, as in gigapan.com
+        if(event.buttons() == QtCore.Qt.MiddleButton):
+            pt = event.pos()
+            x,y = pt.x(), pt.y()
+            self.top_left = (self.start_x + (x - self.start_mouse_x), self.start_y + (y - self.start_mouse_y))
+            self.repaint()
+            
+    def mouseReleaseEvent(self, event):
+        if(event.button() == QtCore.Qt.MiddleButton):
+            pt = event.pos()
+            x,y = pt.x(), pt.y()
+            self.top_left = (self.start_x + (x - self.start_mouse_x), self.start_y + (y - self.start_mouse_y))
+            self.repaint()
+        
+    def draw_layer(self,ix_layer,qp):     
+        tile_size,tile_zoom = self.__tile_size_by_zoom(self.zoom)
+        layer = self.layers[ix_layer]
+        size = self.size()
         w = size.width()
         h = size.height()
-        (x_start,y_start) = self.top_left
-        #get the next-higher-up whole zoom level
-        tile_zoom = int(math.ceil(self.zoom))
-        zoom_ratio = self.zoom % 1.0
-        #if the fraction is below 1/256, use the previous whole zoom level
-        if(zoom_ratio < 1.0 / full_tile_size):
-            zoom_ratio = 1.0
-            tile_zoom -= 1 
+        if TileCoord(tile_zoom,0,0) in layer.bounding_pyramid:
+            #get bounds at this whole zoom level
+            (xbounds,ybounds) = layer.bounding_pyramid.zget(tile_zoom)
             
-        tile_size = full_tile_size * zoom_ratio
-        layer = self.layers[ix_layer]
-        #calculate offsets and which tiles to skip rendering
-        #get bounds at this whole zoom level
-        (xbounds,ybounds) = layer.bounding_pyramid.zget(tile_zoom)
-        #calculate total # of tiles in each dimension
-        n_tiles_x = xbounds.stop - xbounds.start + 1
-        n_tiles_y = ybounds.stop - ybounds.start + 1
-        #calculate pixel coordinates if we were to render all tiles
-        x_end = n_tiles_x * tile_size + x_start
-        y_end = n_tiles_y * tile_size + y_start
-        #figure out what size are the margins (negative if there is overflow)
-        right_margin = w - x_end
-        bottom_margin = h - y_end 
-        #how many tiles fit into the left & top margin?
-        x_tile_offset = x_start / tile_size
-        y_tile_offset = y_start / tile_size
-        #if the above numbers are negative, the latter coordinate will be where we actually start rendering
-        x_start = max(x_start, x_start - x_tile_offset*tile_size)
-        y_start = max(y_start, y_start - y_tile_offset*tile_size)
-        #figure out which tiles we should actually start with
-        x_tile_start = max(x_tile_offset,0)
-        y_tile_start = max(y_tile_offset,0)
-        #figure out which tiles we should end with
-        x_tile_end = min(n_tiles_x + (-right_margin / tile_size), n_tiles_x)
-        y_tile_end = min(n_tiles_y + (-bottom_margin / tile_size), n_tiles_y)
-        n_tiles_x = x_tile_end - x_tile_start
-        n_tiles_y = y_tile_end - y_tile_start
-        
-        x_end = x_start + n_tiles_x * tile_size
-        y_end = y_start + n_tiles_y * tile_size
-        
-        x_tile = x_tile_start
-        for x in xrange(x_start,x_end,tile_size):
-            y_tile = y_tile_start
-            for y in xrange(y_start,y_end,tile_size):
-                tile = self.tile(ix_layer,tile_zoom,x_tile,y_tile)
-                qp.drawImage(x,y,tile)
-                y_tile +=1
-            x_tile +=1
-        
+            #calculate total # of tiles in each dimension
+            n_tiles_x = xbounds.stop - xbounds.start
+            n_tiles_y = ybounds.stop - ybounds.start
+            
+
+            (x_start,y_start) = self.top_left
+            
+            #arbitrary pixel bounds
+            end_x = x_start + n_tiles_x * tile_size
+            end_y = y_start + n_tiles_y * tile_size
+            
+            if(x_start > w or y_start > h or end_x < 0 or end_y < 0):
+                return
+            
+            start_tile_x = 0
+            start_tile_y = 0
+            end_tile_x = n_tiles_x
+            end_tile_y = n_tiles_y
+            #crop the tile bounds if need be
+            if(x_start < 0):
+                start_tile_x += -x_start / tile_size
+                x_start += start_tile_x * tile_size
+            if(y_start < 0):
+                start_tile_y += -y_start / tile_size
+                y_start += start_tile_y * tile_size
+            if(end_x > w):
+                end_tile_x -= (end_x - w) / tile_size
+            if(end_y > h):
+                end_tile_y -= (end_y - h) / tile_size
+            
+            tiles_drawn = 0
+            x = x_start
+            for x_tile in xrange(start_tile_x,end_tile_x):
+                y = y_start
+                for y_tile in xrange(start_tile_y,end_tile_y):
+                    tile = self.tile(ix_layer,tile_zoom,x_tile,y_tile,tile_size)
+                    if(tile is not None):
+                        qp.drawImage(x,y,tile)
+                    tiles_drawn += 1
+                    y += tile.height()
+                x_tile +=1
+                x += tile.width()
+            
+    def minimumSizeHint(self):
+        return QtCore.QSize(512,512)
+    
+    def sizeHint(self):
+        return QtCore.QSize(1024,1024)
     
     def draw_widget(self,qp):
-        #TODO - remove next line
         for ix_layer in xrange(len(self.layers)):
-            self.draw_layer(ix_layer, qp)        
+            self.draw_layer(ix_layer, qp)
+            
         
 
-class QTileStore(MBTilesTileStore):
+class TileLayer(MBTilesTileStore):
 
     def __init__(self, mbtiles_filename, **kwargs):
         '''
         Constructs a tiled image store connected to the current mbtilse sqllite database file.
         '''
         connection = sqlite3.connect(mbtiles_filename)
-        super(QTileStore,self).__init__(connection,**kwargs)
+        super(TileLayer,self).__init__(connection,**kwargs)
         self.bounding_pyramid = self.get_bounding_pyramid()
         
         self.alpha = 255
@@ -157,14 +234,23 @@ class QTileStore(MBTilesTileStore):
             return None
         return raw_data
     
+    def get_PIL_image(self,tile):
+        try:
+            data = self.tiles[tile.tilecoord]
+            parser= ImageFile.Parser()
+            parser.feed(data)
+            image = parser.close()
+        except KeyError:
+            return None
+        return image
+    
     def get_qimage(self, tile):
         try:
             data = self.tiles[tile.tilecoord]
             parser= ImageFile.Parser()
             parser.feed(data)
             image = parser.close()
-            raw_data = image.tostring('raw','RGB')
-            qimage = QtGui.QImage(raw_data, 256, 256, QtGui.QImage.Format_RGB888)
+            qimage = PIL_to_QImage(image)
         except KeyError:
             return None
         return qimage

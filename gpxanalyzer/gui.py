@@ -1,3 +1,11 @@
+'''
+Created on Mar 13, 2014
+
+@author: Gregory Kramida
+@license: GNU v3
+@copyright: 2014
+'''
+
 from PySide import QtCore, QtGui
 import tilecloud
 import gc
@@ -11,22 +19,15 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
 
     def init_gui(self):
         self.printer = QtGui.QPrinter()
-        self.scaleFactor = 0.0
-
-        self.imageLabel = QtGui.QLabel()
-        self.imageLabel.setBackgroundRole(QtGui.QPalette.Base)
-        self.imageLabel.setSizePolicy(QtGui.QSizePolicy.Ignored,
-                QtGui.QSizePolicy.Ignored)
-        self.imageLabel.setScaledContents(True)
-
-        self.image_area = tiles.QTiledImage()
+        #self.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
+        self.setBackgroundRole(QtGui.QPalette.Dark)
+        
+        self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer("/mnt/sdb2/Data/mbtiles/immunogold-colored/255_reduced.mbtiles"))
         self.image_area.setBackgroundRole(QtGui.QPalette.Base)
         self.image_area.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
 
-        self.scrollArea = QtGui.QScrollArea()
-        self.scrollArea.setBackgroundRole(QtGui.QPalette.Dark)
-        self.scrollArea.setWidget(self.imageLabel)#TODO: change to image_area
-        self.setCentralWidget(self.scrollArea)
+        self.setCentralWidget(self.image_area)
+        
 
         self.createActions()
         self.createMenus()
@@ -36,22 +37,13 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.show()
         #self.showMaximized()
 
+
     def open(self):
         file_path = QtGui.QFileDialog.getOpenFileName(self, "Open File",
                 QtCore.QDir.currentPath())[0]
         if file_path:
-            tile_store = tiles.QTileStore(file_path)
-            qimage = tile_store.get_qimage(1, 4, 4)
-            
-            self.imageLabel.setPixmap(QtGui.QPixmap.fromImage(qimage))
-            self.scaleFactor = 1.0
-    
-            self.printAct.setEnabled(True)
-            self.fitToWindowAct.setEnabled(True)
-            self.updateActions()
-    
-            if not self.fitToWindowAct.isChecked():
-                self.imageLabel.adjustSize()
+            layer = tiles.TileLayer(file_path)
+            self.image_area.add_layer(layer)
 
     def print_(self):
         dialog = QtGui.QPrintDialog(self.printer, self)
@@ -71,12 +63,11 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.scaleImage(0.8)
 
     def normalSize(self):
-        self.imageLabel.adjustSize()
         self.scaleFactor = 1.0
 
     def fitToWindow(self):
         fitToWindow = self.fitToWindowAct.isChecked()
-        self.scrollArea.setWidgetResizable(fitToWindow)
+        self.scroll_area.setWidgetResizable(fitToWindow)
         if not fitToWindow:
             self.normalSize()
 
@@ -143,14 +134,13 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
 
     def scaleImage(self, factor):
         self.scaleFactor *= factor
-        self.imageLabel.resize(self.scaleFactor * self.imageLabel.pixmap().size())
 
-        self.adjustScrollBar(self.scrollArea.horizontalScrollBar(), factor)
-        self.adjustScrollBar(self.scrollArea.verticalScrollBar(), factor)
+        self.adjustScrollBar(self.scroll_area.horizontalScrollBar(), factor)
+        self.adjustScrollBar(self.scroll_area.verticalScrollBar(), factor)
 
         self.zoomInAct.setEnabled(self.scaleFactor < 3.0)
         self.zoomOutAct.setEnabled(self.scaleFactor > 0.333)
 
     def adjustScrollBar(self, scrollBar, factor):
         scrollBar.setValue(int(factor * scrollBar.value()
-                                + ((factor - 1) * scrollBar.pageStep()/2)))
+                                 + ((factor - 1) * scrollBar.pageStep()/2)))

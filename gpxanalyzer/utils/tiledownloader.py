@@ -22,10 +22,6 @@ from PIL import Image
 import console
 import argparse
 import gc
-from memory_profiler import profile
-#import argparse
-
-
 
 class TileDownloader:
     '''
@@ -36,12 +32,199 @@ class TileDownloader:
     @abc.abstractmethod
     def retrieve_image_settings(self, image_id, verbose = False):
         pass
+
+    def print_progress(self,i_tile, n_tiles, elapsed):
+        n_done = i_tile+1
+        frac_done = float(n_done) / n_tiles
+        total_time = elapsed / frac_done
+        eta = total_time - elapsed
+        hour_eta = int(eta) / 3600
+        min_eta = int(eta-hour_eta*3600) / 60
+        sec_eta = int(eta-hour_eta*3600-min_eta*60)
+        print '{0:.3%} done ({5:0} of {6:0} tiles), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'.format(frac_done,hour_eta,min_eta,sec_eta, int(elapsed), i_tile, n_tiles),
+        sys.stdout.flush()
+        print "\r",
+    
+    def handle_jobs(self,jobs):
+        gevent.joinall(jobs,timeout=20)
+        success = True
+        for job in jobs:
+            if not job.ready():
+                success = False
+                job.kill()
+        return success
+    
+    def run_batch(self, settings, image_id, xs, y, output_folder, verbose = False):
+        '''
+        Run a single batch of tile downloads
+        @type xs: list of int 
+        @param xs: xs are the x coordinates for each tile in the batch
+        @type y: int
+        @param y: The y coordinate for every tile in the batch
+        @type output_folder: str
+        @param output_folder: path where to save the tiles
+        @type image_id: int
+        @param image_id: numeric id of the image
+        '''
+        success = False
+        while(not success):
+            jobs = [gevent.spawn(self.download_tile,  
+                                 settings, image_id, x, y, output_folder,
+                                 verbose = False) for x in xs]
+            success = self.handle_jobs(jobs)
+            if not success: 
+                print "\nTimeout, retrying batch"
+        return True
+
+    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verify = False, verbose = False):
+        settings, tile_range = self.set_up_range_and_settings(settings, tile_range, image_id, verbose)
+        
+        (start_x,end_x,start_y,end_y) = tile_range
+        
+        if(output_folder is None):
+            output_folder = str(image_id)
+        
+        #create output folder if such doesn't exist
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+        
+        redownload = False
+        bad_tiles = []
+        
+        if not verify:
+            start_first_row_at, start_y = self.check_what_is_done((start_x, end_x, start_y, end_y), output_folder)
+        else:
+            start_first_row_at, start_y, bad_tiles = self.check_what_is_done_and_verify((start_x, end_x, start_y, end_y), output_folder)    
+            if(len(bad_tiles) > 0):
+                redownload = console.query_yes_no("Found %d bad tiles. Re-download now (y/n)?" % len(bad_tiles))
+            else:
+                if(verbose):
+                    print "Tiles verified and no bad tiles found."
+        
+        if redownload:
+            for (x,y) in bad_tiles:
+                self.download_tile(settings, image_id, x, y, output_folder, verbose = False)
+            if(verbose):
+                print "Bad tiles re-downloaded."
+
+        batch_size = psutil.NUM_CPUS*2
+        do_extra_batch = False
+        
+        work_width = end_x - start_x
+        n_batches = work_width / batch_size
+        
+        #see if a small extra batch is needed to finish the right margin
+        if(work_width % batch_size != 0):
+            do_extra_batch = True
+            remainder_start = start_x + work_width - (work_width % batch_size)
+            
+        #scroll back a bit to ensure proper bounds and re-load the entire last batch * 2
+        start_first_row_at = max(start_first_row_at - (start_first_row_at % batch_size) - batch_size*2,start_x)
+        start_batch = start_first_row_at / batch_size
+        
+        
+        n_tiles = work_width*end_y - (max(start_y-1,0) * work_width + start_first_row_at)
+        i_tile = 0
+        start_time = time.time()
+        if(verbose):
+            print "Starting from tile %04d-%04d.jpg" % (start_first_row_at, start_y)
+            print "Ending after tile %04d-%04d.jpg" % (end_x-1, end_y-1)
+        #loop to get the first row
+        y = start_y
+        
+        run_batch_local = lambda xs, y: self.run_batch(settings, image_id, xs, y, output_folder, verbose)
+        for x_range in xrange(start_batch,n_batches):
+            xs = range(start_x + x_range*batch_size, start_x + (x_range+1)*batch_size)
+            run_batch_local(xs, y)
+            i_tile += batch_size
+            self.print_progress(i_tile, n_tiles, time.time() - start_time)
+        if do_extra_batch is True:
+            xs = range(remainder_start,work_width)
+            run_batch_local(xs, y)
+            i_tile += len(xs)
+            self.print_progress(i_tile, n_tiles, time.time() - start_time)
+        #loop around to get every tile
+        for y in xrange(start_y+1,end_y):
+            for x_range in xrange(0,n_batches):
+                xs = range(start_x + x_range*batch_size, start_x + (x_range+1)*batch_size)
+                run_batch_local(xs, y)
+                i_tile += batch_size
+                self.print_progress(i_tile, n_tiles, time.time() - start_time)
+            if do_extra_batch is True:
+                xs = range(remainder_start,work_width)
+                run_batch_local(xs, y)
+                i_tile += len(xs)
+                self.print_progress(i_tile, n_tiles, time.time() - start_time)
+        if(verbose):
+            print "\nDone."
+            
     @abc.abstractmethod
-    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verbose = False):
+    def download_tile(self, settings, image_id, x, y, output_folder, verbose = False):
         pass
-    @abc.abstractmethod
-    def download_tile(self,settings, image_id, x, y, output_folder,verbose = False):
-        pass
+    
+    def _gen_file_path(self,x,y,folder):
+        filename = "%04d-%04d.jpg"%(x,y)
+        return folder+os.path.sep+filename
+    
+    def _check_file(self,path):
+        try:
+            img = Image.open(path)
+        except IOError:
+            print "Failed to open image %s. Adding to re-download list." % path
+            return False
+        del img
+        gc.collect()
+        return True
+    
+    def check_what_is_done(self, ranges, output_folder):
+        (start_x, end_x, start_y, end_y) = ranges
+        print "Checking progress..."
+        #check what's ready
+        check_next_row = True
+        x = 0; y = start_y
+        for y in xrange(start_y,end_y):
+            for x in xrange(start_x,end_x):
+                path = self._gen_file_path(x,y,output_folder)
+                if(not os.path.isfile(path)):
+                    check_next_row = False
+                    break
+            if(not check_next_row):
+                break
+        return x, y
+    
+    def check_what_is_done_and_verify(self, ranges, output_folder):
+        '''
+        Checks the progress up to this point (in terms of which files exist)
+        For every file that exists, checks whether it can be loaded as an image by opencv.
+        If not, then adds that to the bad_tiles list.
+        @return: x, y, bad_tiles - where x and y are coorinates of the last tile it found, and bad_tiles
+        are existing tiles which couldn't be opened 
+        '''
+        print "Verifying downloaded tiles..."
+        (start_x, end_x, start_y, end_y) = ranges
+        check_next_row = True
+        x = 0; y = start_y
+        bad_tiles = []
+        width = (end_x - start_x)
+        n_tiles = (end_y - start_y)*width
+        i_tile = 0
+        start = time.time()
+        for y in xrange(start_y,end_y):
+            for x in xrange(start_x, end_x):
+                path = self._gen_file_path(x,y,output_folder)
+                if(not os.path.isfile(path)):
+                    check_next_row = False
+                    break
+                else:
+                    if not self._check_file(path):
+                        bad_tiles.append((x,y))
+                i_tile+=1
+                self.print_progress(i_tile,n_tiles,time.time()-start)
+            if(not check_next_row):
+                break
+        print "Tile Verification Complete"
+        return x, y, bad_tiles
+        
     def set_up_range_and_settings(self, settings, tile_range, image_id, verbose = False):
         if(settings is None):
             settings = self.retrieve_image_settings(image_id, verbose)
@@ -50,8 +233,14 @@ class TileDownloader:
         else:
             if(tile_range[1] < 0):
                 tile_range[1] = settings.n_cells_x
+            else:
+                tile_range[1] +=1
+                tile_range[1] = min(settings.n_cells_x,tile_range[1])
             if(tile_range[3] < 0):  
                 tile_range[3] = settings.n_cells_y
+            else:
+                tile_range[3] +=1
+                tile_range[3] = min(settings.n_cells_y,tile_range[3])
         return settings, tile_range
 
 class GigapanTileDownloader(TileDownloader):
@@ -101,7 +290,7 @@ class GigapanTileDownloader(TileDownloader):
             print "Maximum zoom level: %d" % maxlevel 
         return Bunch({"n_cells_x":n_cells_x, "n_cells_y":n_cells_y, "maxlevel":maxlevel})
     
-    def download_tile(self, settings, image_id, x, y, output_folder,verbose = False):
+    def download_tile(self, settings, image_id, x, y, output_folder, verbose = False):
         filename = "%04d-%04d.jpg"%(x,y)
         url = "%s/get_ge_tile/%d/%d/%d/%d"%(GigapanTileDownloader.base_url,image_id, settings.maxlevel,y,x)
         if(verbose):
@@ -111,16 +300,6 @@ class GigapanTileDownloader(TileDownloader):
         fout.write(h.read())
         fout.close()
         
-    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verbose = False):
-        if(output_folder is None):
-            output_folder = str(image_id)
-        #create output folder if such doesn't exist
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-        settings, tile_range = self.set_up_range_and_settings(settings, tile_range, image_id, verbose)
-        for y in xrange(tile_range[2],tile_range[3]):
-            for x in xrange(tile_range[0],tile_range[1]):
-                self.download_tile(settings, image_id, x, y, output_folder,verbose)
 #=========END CLASS GigapanTileDownloader====================================
 
 
@@ -149,7 +328,6 @@ class JCBTileDownloader(TileDownloader):
             % (width,height,str((tile_width, tile_height)), image_info["rdefs"]["model"]))
         n_cells_x = width/tile_width
         n_cells_y = height/tile_height
-        zoom = 100 #default zoom: max
         if (verbose):
             print "Tile dimensions: %d x %d" %(n_cells_x,n_cells_y)
         return Bunch({"n_cells_x":n_cells_x, 
@@ -182,217 +360,25 @@ class JCBTileDownloader(TileDownloader):
                 print "\nConnection Error, retrying batch"
                 continue
         
-    def print_progress(self,i_tile, n_tiles, elapsed):
-        n_done = i_tile+1
-        frac_done = float(n_done) / n_tiles
-        total_time = elapsed / frac_done
-        eta = total_time - elapsed
-        hour_eta = int(eta) / 3600
-        min_eta = int(eta-hour_eta*3600) / 60
-        sec_eta = int(eta-hour_eta*3600-min_eta*60)
-        print '{0:.3%} done ({5:0} of {6:0} tiles), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'.format(frac_done,hour_eta,min_eta,sec_eta, int(elapsed), i_tile, n_tiles),
-        sys.stdout.flush()
-        print "\r",
-    
-    def __gen_file_path(self,x,y,folder):
-        filename = "%04d-%04d.jpg"%(x,y)
-        return folder+os.path.sep+filename
-    
-    #TODO: check methods should be generic for all TileDownloaders - include in abastract base class
-    @profile
-    def check_what_is_done(self, width, start_y, end_y, output_folder):
-        print "Checking progress..."
-        #check what's ready
-        check_next_row = True
-        x = 0; y = start_y
-        for y in xrange(start_y,end_y):
-            for x in xrange(width):
-                path = self.__gen_file_path(x,y,output_folder)
-                if(not os.path.isfile(path)):
-                    check_next_row = False
-                    break
-            if(not check_next_row):
-                break
-        return x, y
-    
-    def __check_file(self,path):
-        try:
-            img = Image.open(path)
-        except IOError:
-            print "Failed to open image %s. Adding to re-download list." % path
-            return False
-        del img
-        gc.collect()
-        return True
-    
-    def check_what_is_done_and_verify(self, width, start_y, end_y, output_folder):
-        '''
-        Checks the progress up to this point (in terms of which files exist)
-        For every file that exists, checks whether it can be loaded as an image by opencv.
-        If not, then adds that to the bad_tiles list.
-        @return: x, y, bad_tiles - where x and y are coorinates of the last tile it found, and bad_tiles
-        are existing tiles which couldn't be opened 
-        '''
-        print "Verifying downloaded tiles..."
-        check_next_row = True
-        x = 0; y = start_y
-        bad_tiles = []
-        n_tiles = (end_y - start_y)*width
-        i_tile = 0
-        start = time.time()
-        for y in xrange(start_y,end_y):
-            for x in xrange(width):
-                path = self.__gen_file_path(x,y,output_folder)
-                if(not os.path.isfile(path)):
-                    check_next_row = False
-                    break
-                else:
-                    if not self.__check_file(path):
-                        bad_tiles.append((x,y))
-                i_tile+=1
-                self.print_progress(i_tile,n_tiles,time.time()-start)
-            if(not check_next_row):
-                break
-        print "Tile Verification Complete"
-        return x, y, bad_tiles
-    
-    def handle_jobs(self,jobs):
-        gevent.joinall(jobs,timeout=20)
-        success = True
-        for job in jobs:
-            if not job.ready():
-                success = False
-                job.kill()
-        return success
-    
-    def run_batch(self, settings, image_id, xs, y, output_folder, verbose = False):
-        '''
-        Run a single batch of tile downloads
-        @type xs: list of int 
-        @param xs: xs are the x coordinates for each tile in the batch
-        @type y: int
-        @param y: The y coordinate for every tile in the batch
-        @type output_folder: str
-        @param output_folder: path where to save the tiles
-        @type image_id: int
-        @param image_id: numeric id of the image
-        '''
-        success = False
-        while(not success):
-            jobs = [gevent.spawn(self.download_tile,  
-                                 settings, image_id, x, y, output_folder,
-                                 verbose = False) for x in xs]
-            success = self.handle_jobs(jobs)
-            if not success: 
-                print "\nTimeout, retrying batch"
-        return True
-    
-    def download_tiles(self,image_id, output_folder,tile_range=None, settings = None, verbose = False):
-        settings, tile_range = self.set_up_range_and_settings(settings, tile_range, image_id, verbose)
-        verify = self.verify
-        
-        start_y=tile_range[2]
-        end_y=tile_range[3]
-        
-        #TODO: add support for x ranges
-        if(tile_range[0] > 0 or tile_range[1] > 0):
-            print "Warning: x range is not yet supported by the JCBTileDownloader"
-        
-        if(output_folder is None):
-            output_folder = str(image_id)
-        
-        #create output folder if such doesn't exist
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
-            
-        wt = settings.n_cells_x
-        ht = settings.n_cells_y
-        
-        #exclusive bound
-        end_y +=1
-        end_y = min(ht, end_y)
-        
-        redownload = False
-        bad_tiles = []
-        
-        if not verify:
-            start_x, start_y = self.check_what_is_done(wt, start_y, end_y, output_folder)
-        else:
-            start_x, start_y, bad_tiles = self.check_what_is_done_and_verify(wt, start_y, end_y, output_folder)    
-            if(len(bad_tiles) > 0):
-                redownload = console.query_yes_no("Found %d bad tiles. Re-download now (y/n)?" % len(bad_tiles))
-            else:
-                if(verbose):
-                    print "Tiles verified and no bad tiles found."
-        
-        if redownload:
-            for (x,y) in bad_tiles:
-                self.download_tile(self, settings, image_id, x, y, output_folder, verbose = False)
-            if(verbose):
-                print "Bad tiles re-downloaded."
-                
-            
-        
-        batch_size = psutil.NUM_CPUS*2
-        do_extra_batch = False
-        
-        n_batches = wt / batch_size
-        
-        if(wt % batch_size != 0):
-            do_extra_batch = True
-            remainder_start = wt - (wt % batch_size)
-            
-        #scroll back a bit to ensure proper bounds and re-load the entire last batch * 2
-        start_x = max(start_x - (start_x % batch_size) - batch_size*2,0)
-        start_batch = start_x / batch_size
-        
-        
-        n_tiles = wt*end_y - (start_y * wt + start_x)
-        i_tile = 0
-        start = time.time()
-        if(verbose):
-            print "Starting from tile %04d-%04d.jpg" % (start_x, start_y)
-            print "Ending on tile %04d-%04d.jpg" % (wt-1, end_y-1)
-        #loop to get the first row
-        y = start_y
-        
-        run_batch_local = lambda xs, y: self.run_batch(settings, image_id, xs, y, output_folder, verbose)
-        for x_range in xrange(start_batch,n_batches):
-            xs = range(x_range*batch_size, (x_range+1)*batch_size)
-            run_batch_local(xs, y)
-            i_tile += batch_size
-            self.print_progress(i_tile, n_tiles, time.time() - start)
-        if do_extra_batch is True:
-            xs = range(remainder_start,wt)
-            run_batch_local(xs, y)
-            i_tile += len(xs)
-            self.print_progress(i_tile, n_tiles, time.time() - start)
-        #loop around to get every tile
-        for y in xrange(start_y+1,end_y):
-            for x_range in xrange(0,n_batches):
-                xs = range(x_range*batch_size, (x_range+1)*batch_size)
-                run_batch_local(xs, y)
-                i_tile += batch_size
-                self.print_progress(i_tile, n_tiles, time.time() - start)
-            if do_extra_batch is True:
-                xs = range(remainder_start,wt)
-                run_batch_local(xs, y)
-                i_tile += len(xs)
-                self.print_progress(i_tile, n_tiles, time.time() - start)
-        if(verbose):
-            print "\nDone."
-            
+
+#========END CLASS JCBTileDownloader====================================
+
 downloaders_by_data_source = {"gigapan":GigapanTileDownloader(),
                               "jcb":JCBTileDownloader()}
 
-parser = argparse.ArgumentParser(description="A tool that retrieves color/greyscale 256x256 from the jcb (Journal of Cell Biology) website.")
+parser = argparse.ArgumentParser(description="A tool for downloading color/greyscale 256x256 image tiles from various data sources.")
+
 parser.add_argument("--output_folder", "-o", default=None,
                     help="path to folder for the downloaded tiles")
 parser.add_argument("--image_id", "-id", type=int, default=201,
                     help="id of the image to retrieve")
-parser.add_argument("--start_row", "-s", type=int, default=-1,
+parser.add_argument("--start_row", "-s", type=int, default=0,
                     help="tile row to start with")
 parser.add_argument("--end_row", "-e", type=int, default=-1,
+                    help="tile row to end with")
+parser.add_argument("--start_column", "-sc", type=int, default=0,
+                    help="tile row to start with")
+parser.add_argument("--end_column", "-ec", type=int, default=-1,
                     help="tile row to end with")
 parser.add_argument("--verify", "-V", action="store_true", default=False, 
                     help="verify the already-loaded tiles by opening them")
@@ -405,9 +391,8 @@ parser.add_argument("--data_source", "-ds", default=downloaders_by_data_source.k
 if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
     output_folder = args.output_folder
-    image_id = args.image_id
-    tile_range = [0,args.start_row,0,args.end_row]
+    if(output_folder is None):
+        output_folder = str(args.image_id)
+    tile_range = [args.start_column,args.end_column,args.start_row,args.end_row]
     downloader = downloaders_by_data_source[args.data_source]
-    if(args.verify):
-        downloader.verify = True
-    downloader.download_tiles(image_id, output_folder,tile_range=tile_range, verbose = True)
+    downloader.download_tiles(args.image_id, output_folder,tile_range=tile_range, verify=args.verify, verbose = True)
