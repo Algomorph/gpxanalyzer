@@ -2,6 +2,8 @@
 Created on Jun 11, 2013
 
 @author: Gregory Kramida
+@license: GNU v3
+@copyright: (c) Gregory Kramida 2013
 '''
 import os
 import re
@@ -18,6 +20,9 @@ def get_subfolders(path):
     return [name for name in os.listdir(path)
         if os.path.isdir(os.path.join(path, name))]
 
+def find_extension(path):
+    ext_re = re.compile("(?<=\.)\w+$")
+    return ext_re.findall(path)[0]
 
 def check_image(path, shape, verbose = False):
     try:

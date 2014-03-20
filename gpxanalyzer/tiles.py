@@ -3,12 +3,12 @@ Created on Mar 13, 2014
 
 @author: Gregory Kramida
 @license: GNU v3
-@copyright: 2014
+@copyright: (c) Gregory Kramida 2014
 '''
 
+import math
 
 import sqlite3
-import math
 from tilecloud.store.mbtiles import MBTilesTileStore
 from tilecloud import TileCoord, Tile
 from PIL import ImageFile

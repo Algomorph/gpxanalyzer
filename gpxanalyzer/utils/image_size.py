@@ -1,12 +1,11 @@
 #-------------------------------------------------------------------------------
-# Name:        get_image_size
+# Name:        get_image_info
 # Purpose:     extract image dimensions & number of channels given a file path
 #
-# Author:      Paulo Scardine, Gregory Kramida (based on code from Emmanuel VAISSE)
+# Author:      Paulo Scardine, EJEHardenberg, Gregory Kramida (based on code from Emmanuel VAISSE)
 #
 # Created:     26/09/2013
 # Copyright:   (c) Paulo Scardine 2013
-# Copyright:   (c) Gregory Kramida 2014
 # Licence:     MIT
 #-------------------------------------------------------------------------------
 #!/usr/bin/env python
@@ -18,7 +17,7 @@ FILE_UNKNOWN = "Sorry, don't know how to get size for this file."
 class UnknownImageFormat(Exception):
     pass
 
-def get_image_size(file_path):
+def get_image_info(file_path):
     """
     Return (width, height) for a given img file content - no external
     dependencies except the os and struct builtin modules
@@ -51,6 +50,8 @@ def get_image_size(file_path):
                 n_channels = 2 #grey and alpha channel used
             elif(t == 6):
                 n_channels = 4 #RGB and alpha channel used
+            else:
+                n_channels = 1 #greyscale
         elif (size >= 16) and data.startswith('\211PNG\r\n\032\n'):
             # older PNGs
             w, h, d, t = struct.unpack(">LL", data[8:18])
@@ -62,6 +63,8 @@ def get_image_size(file_path):
                 n_channels = 2 #grey and alpha channel used
             elif(t == 6):
                 n_channels = 4 #RGB and alpha channel used
+            else:
+                n_channels = 1 #greyscale
         elif (size >= 2) and data.startswith('\377\330'):
             # JPEG
             input.seek(0)

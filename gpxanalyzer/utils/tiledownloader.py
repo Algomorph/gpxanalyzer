@@ -3,25 +3,32 @@
 '''
 Created on Mar 7, 2014
 
-@author: algomorph
+@author: Gregory Kramida
+@license: GNU v3
+@copyright: (c) Gregory Kramida 2014
+
 '''
 
 from gevent import monkey; monkey.patch_all()
 import gevent
+
 from data import Bunch
-import abc
+from PIL import Image
 from xml.dom.minidom import parseString
+
+import argparse
+import gc
 import sys
+import abc
 import math
 import os
+import time
 import urllib2
 import json
 import psutil
-import time
-from PIL import Image
+
 import console
-import argparse
-import gc
+
 
 class TileDownloader:
     '''
@@ -33,15 +40,15 @@ class TileDownloader:
     def retrieve_image_settings(self, image_id, verbose = False):
         pass
 
-    def print_progress(self,i_tile, n_tiles, elapsed):
-        n_done = i_tile+1
-        frac_done = float(n_done) / n_tiles
+    def print_progress(self,i_item, n_items, elapsed):
+        n_done = i_item+1
+        frac_done = float(n_done) / n_items
         total_time = elapsed / frac_done
         eta = total_time - elapsed
         hour_eta = int(eta) / 3600
         min_eta = int(eta-hour_eta*3600) / 60
         sec_eta = int(eta-hour_eta*3600-min_eta*60)
-        print '{0:.3%} done ({5:0} of {6:0} tiles), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'.format(frac_done,hour_eta,min_eta,sec_eta, int(elapsed), i_tile, n_tiles),
+        print '{0:.3%} done ({5:0} of {6:0} tiles), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'.format(frac_done,hour_eta,min_eta,sec_eta, int(elapsed), i_item, n_items),
         sys.stdout.flush()
         print "\r",
     

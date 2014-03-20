@@ -2,27 +2,33 @@
 '''
 Created on Mar 12, 2014
 
-@author: algomorph
+@author: Gregory Kramida
+@license: GNU v3
+@copyright: (c) Gregory Kramida 2014
 '''
+import tiledownloader as td
+from tilecombiner import combine_tiles, get_cell_counts
 import argparse
 import sys
 import data as dm
 import re
 import os
 import shutil
+import math
+from data import get_raster_names, find_extension
+from PIL import Image
+import image_size as imz
+from console import print_progress
+import time
 
-parser = argparse.ArgumentParser(description="A tool that arranges the x-y.format files into /z/x/y tile folder structure.")
-parser.add_argument("--tile_directory", "-d", default="test",
-                    help="path to root directory with zoom level subdirecotries")
-
-def arrange_tiles(tile_dir):
+def arrange_tile_levels_into_zxy(tile_dir):
     zoom_dirs = dm.get_subfolders(tile_dir)
     coord_re = re.compile("\d\d\d\d")
     
-    ext_re = re.compile("(?<=\.)\w+")
     first_tile_name = dm.get_raster_names(tile_dir + os.path.sep + zoom_dirs[0])[0]
-    extension = "." + ext_re.findall(first_tile_name)[0]
     
+    extension = "." + find_extension(first_tile_name)
+    #TODO: add progress reporting (count the files in folders initially?)
     for zoom_subfolder in zoom_dirs:
         zoom_dir = tile_dir + os.path.sep + zoom_subfolder
         tile_names = dm.get_raster_names(zoom_dir)
@@ -38,6 +44,105 @@ def arrange_tiles(tile_dir):
             
             shutil.move(old_path,new_path)
 
+def pyramidize(orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False):
+    tile_names = get_raster_names(orig_tile_dir)
+    n_tiles_x, n_tiles_y = get_cell_counts(tile_names)
+    first_tile_name = tile_names[0]
+    tile_extension = find_extension(first_tile_name)
+    if(tile_extension.lower() != "png"):
+        conversion_necessary = True
+    else:
+        conversion_necessary = False
+    first_tile_name = orig_tile_dir + os.path.sep + tile_names[0]
+    cell_width, cell_height, n_channels = imz.get_image_info(first_tile_name)
+    
+    #create pyramid folder if there isn't one
+    if not os.path.isdir(pyramid_base_dir):
+        os.makedirs(pyramid_base_dir)
+    
+    base_level_size = max(n_tiles_x,n_tiles_y)
+    n_levels = int(math.ceil(math.log(base_level_size,2))) + 1
+    
+    #create level folders
+    for i_level in xrange(0,n_levels):
+        level_dir = pyramid_base_dir + os.path.sep + str(i_level)
+        if not os.path.exists(level_dir):
+            os.makedirs(level_dir)
+        
+    base_level_index = n_levels - 1
+    #copy base level
+    print "Copying base level."
+    start_time = time.time()
+    n_tiles = len(tile_names)
+    i_tile = 0
+    if(conversion_necessary):
+        for tile_name in tile_names:
+            new_tile_path = (pyramid_base_dir + os.path.sep 
+                             + str(base_level_index) + os.path.sep 
+                             + tile_name.replace(tile_extension,"png"))
+            if not os.path.exists(new_tile_path):
+                orig_tile_path = orig_tile_dir + os.path.sep + tile_name
+                im = Image.open(orig_tile_path)
+                im.save(new_tile_path,"PNG")
+            print_progress(i_tile, n_tiles, start_time, "tiles")
+            i_tile += 1
+    else:
+        for tile_name in tile_names:
+            
+            new_tile_path = (pyramid_base_dir + os.path.sep 
+                             + str(base_level_index) + os.path.sep 
+                             + tile_name)
+            if not os.path.exists(new_tile_path):
+                orig_tile_path = orig_tile_dir + os.path.sep + tile_name
+                shutil.copy(orig_tile_path,new_tile_path)
+            print_progress(i_tile, n_tiles, start_time, "tiles")
+            i_tile += 1
+    
+    downloader = td.downloaders_by_data_source[data_source]
+    
+    #traverse the levels to arrange the tiles
+    for i_level in xrange(n_levels-1,0,-1):
+        src_level_folder = pyramid_base_dir + os.path.sep + str(i_level)
+        dst_level_folder = pyramid_base_dir + os.path.sep + str(i_level-1)
+        print "Combining & reducing level %d into level %d" % (i_level, i_level-1)
+        combine_tiles(src_level_folder, dst_level_folder, cell_width*2, 
+                      cell_width, downloader, verify = False, overflow_mode = "crop")
+    
+    if(arrange_in_zxy_format):
+        print "Arrainging in /z/x/y format..."
+        arrange_tile_levels_into_zxy(pyramid_base_dir)
+        
+ops = {"arrange_zxy":[lambda args: arrange_tile_levels_into_zxy(args.input_tile_directory),
+                      """Takes the input folder with z-level subfolders by tiles named in \"x-y.ext\" 
+format and re-arranges the tiles in-place to form /z/x/y folder structure."""],
+       "pyramidize":[lambda args : pyramidize(args.input_tile_directory, args.output_tile_directory, args.data_source, True),
+                     """Takes the input folder with just the base level of tiles in named in \"x-y.ext\"
+format and builds a complete /z/x/y pyramid in the output folder. Does not modify the input folder."""]}
+
+ops_help_string = "Operation to perform. Can be one of: {0:s}".format(str(ops.keys()))
+for key, val in ops.itervalues():
+    ops_help_string += "\n{0:s}: {1:s}".format(key,val[1])
+
+#TODO: add verification of tiles
+
+parser = argparse.ArgumentParser(description="A tool that arranges the x-y.format tiles into /z/x/y tile folder structure.")
+parser.add_argument("--input_tile_directory", "-i", default="test",
+                    help="path to the input directory")
+parser.add_argument("--data_source", "-ds", default=None,
+                    metavar="DATA_SOURCE",
+                    choices=td.downloaders_by_data_source.keys(),
+                    help="original data source of the tiles. Can be one of: %s" 
+                    % str(td.downloaders_by_data_source.keys()))
+parser.add_argument("--operation", "-op", default=ops.keys()[0],
+                    metavar="OPERATION",
+                    choices=ops,
+                    help=ops_help_string)
+parser.add_argument("--output_tile_directory", "-o", default=None,
+                    help="path to the input directory")
+
+
 if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
-    arrange_tiles(args.tile_directory)
+    if(args.output_tile_directory is None):
+        args.output_tile_directory = args.input_tile_directory + "_pyramid"
+    ops[args.operation][0](args)

@@ -1,4 +1,11 @@
 #!/usr/bin/env python
+'''
+Created on Mar 12, 2014
+
+@author: Gregory Kramida
+@license: GNU v3
+@copyright: (c) Gregory Kramida 2014
+'''
 import tiledownloader
 import argparse
 import os
@@ -35,17 +42,6 @@ parser.add_argument("--overflow_mode", "-of", default=overflow_modes[0],
                     help="What to do when the output tiles at the edge are only partially spanned by the input tiles. Can be one of: %s" 
                     % str(overflow_modes))
 
-
-    
-def get_raster_names(directory):
-    names = os.listdir(directory)
-    names.sort()
-    raster_names = []
-    for name in names:
-        if(re.search(r'[^.]*.(?:jpg)|(?:png)', name, re.IGNORECASE)):
-            raster_names.append(name)
-    return raster_names;
-
 # traverse image names and extract the x & y coordinates, thus finding out cell dimensions
 def get_cell_counts(img_names):
     img_num_regex = re.compile("\d\d\d\d")
@@ -61,16 +57,16 @@ def get_cell_counts(img_names):
             max_cell_y = cell_y
     return max_cell_x + 1, max_cell_y + 1
 
-def print_progress(i_tile, n_tiles, elapsed, x, y):
-        n_done = i_tile + 1
-        frac_done = float(n_done) / n_tiles
+def print_progress(i_item, n_items, elapsed, x, y):
+        n_done = i_item + 1
+        frac_done = float(n_done) / n_items
         total_time = elapsed / frac_done
         eta = total_time - elapsed
         hour_eta = int(eta) / 3600
         min_eta = int(eta - hour_eta * 3600) / 60
         sec_eta = int(eta - hour_eta * 3600 - min_eta * 60)
         print ('Last tile: ({7:04d},{8:04d}). {0:.3%} done ({5:0} of {6:0} tiles), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'
-               .format(frac_done, hour_eta, min_eta, sec_eta, int(elapsed), i_tile, n_tiles, x, y)
+               .format(frac_done, hour_eta, min_eta, sec_eta, int(elapsed), i_item, n_items, x, y)
                 ),
         sys.stdout.flush()
         print "\r",
@@ -109,13 +105,13 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, download
     # !!>>> output tiles are referred to as "tiles"
     # load one file to assess the cell size
     
-    img_names = get_raster_names(input_folder)
+    img_names = dm.get_raster_names(input_folder)
     first_cell_path = input_folder + os.path.sep + img_names[0]
     ext_re = re.compile("(?<=\.)\w+")
     cell_extension = ext_re.findall(img_names[0])[0]
-    cell_width, cell_height, n_channels = imz.get_image_size(first_cell_path)    
+    cell_width, cell_height, n_channels = imz.get_image_info(first_cell_path)    
     
-    
+    #TODO: support non-square rectangular tiles & cells
     if(cell_width != cell_height):
         raise ValueError("Only square input tiles of equal size supported! Found tile at %d x %d px." 
                          % (cell_width, cell_height))

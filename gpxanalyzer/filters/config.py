@@ -110,7 +110,7 @@ class FilterConfig(object):
             first_tile_name = tile_names[0]
             
             # assess size of the tiles (assuming all tiles are the same size)
-            (tile_height, tile_width, n_channels) = img_sz.get_image_size(tile_dir + os.path.sep + first_tile_name)
+            (tile_height, tile_width, n_channels) = img_sz.get_image_info(tile_dir + os.path.sep + first_tile_name)
             tile_shape = (tile_height, tile_width, n_channels)
                 
             if(verbose):

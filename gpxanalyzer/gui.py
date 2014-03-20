@@ -3,12 +3,14 @@ Created on Mar 13, 2014
 
 @author: Gregory Kramida
 @license: GNU v3
-@copyright: 2014
+@copyright: (c) Gregory Kramida 2014
 '''
+
+import gc
 
 from PySide import QtCore, QtGui
 import tilecloud
-import gc
+
 import tiles
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
