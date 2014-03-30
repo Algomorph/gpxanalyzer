@@ -6,28 +6,33 @@ Created on Mar 13, 2014
 @copyright: (c) Gregory Kramida 2014
 '''
 
-import math
-
-import sqlite3
-from tilecloud.store.mbtiles import MBTilesTileStore
-from tilecloud import TileCoord, Tile
 from PIL import ImageFile
 from PySide import QtGui,QtCore
+import math
+import sqlite3
+from tilecloud import TileCoord, Tile
+from tilecloud.store.mbtiles import MBTilesTileStore
+from tilecloud.lib.sqlite3_ import query
+import sys
+import PySide
+sys.modules['PyQt4'] = PySide
+from PIL import ImageQt
 
-full_tile_size = 256
-half_tile_size = 128
 
 def PIL_to_QImage(pil_img):
     #TODO: add layer alpha support
-    raw_data = pil_img.tostring('raw','RGB')
-    qimage = QtGui.QImage(raw_data, pil_img.size[0], pil_img.size[1], QtGui.QImage.Format_RGB888)
-    return qimage;
+#     raw_data = pil_img.tostring('raw','RGB')
+#     qimage = QtGui.QImage(raw_data, pil_img.size[0], pil_img.size[1], QtGui.QImage.Format_RGB888)
+#     return qimage;
+    return ImageQt.ImageQt(pil_img)
 
 class QTiledLayerViewer(QtGui.QWidget):
     def __init__(self, first_layer = None):
         super(QTiledLayerViewer,self).__init__()
         if(first_layer != None):
             self.layers = [first_layer]
+            self.full_tile_size= first_layer.tile_size
+            self.half_tile_size= self.full_tile_size / 2
         else:
             self.layers = []
         self.set_up_ui()
@@ -45,7 +50,7 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.tile_scale = 0
         self.pos = (0,0)
     
-    def tile(self, index, z, x, y, tile_size):
+    def tile(self, index, z, x, y, tile_size, full_tile_size):
         #TODO: add layer alpha support
         root = self.root
         cache = self.cache
@@ -61,8 +66,8 @@ class QTiledLayerViewer(QtGui.QWidget):
                 self.cache[(index, z, x, y)] = image
         if image is not None:
             if(tile_size != full_tile_size):
-                new_size = (int(float(image.size[0]) / full_tile_size * tile_size),
-                            int(float(image.size[1]) / full_tile_size * tile_size))
+                new_size = (int(float(image.size[0]) / self.full_tile_size* tile_size),
+                            int(float(image.size[1]) / self.full_tile_size* tile_size))
                 image = image.resize(new_size)
             return PIL_to_QImage(image)
         return None
@@ -73,12 +78,23 @@ class QTiledLayerViewer(QtGui.QWidget):
     def __getitem__(self,index,layer):
         return self.layers[index]
     
+    def __check_layer_size(self,layer):
+        if(len(self.layers) == 0):
+            self.full_tile_size = layer.tile_size
+            self.half_tile_size = self.full_tile_size / 2
+        else:
+            if(layer.tile_size != self.full_tile_size):
+                raise ValueError("Layers with different tile sizes are not supported.")
+    
     def add_layer(self,layer):
+        self.__check_layer_size(layer)
         self.layers.append(layer)
         self.repaint()
     
     def insert_layer(self,index,layer):
+        self.__check_layer_size(layer)
         self.layers.insert(index, layer)
+        self.repaint()
     
     def __iter__(self):
         for layer in self.layers:
@@ -89,13 +105,13 @@ class QTiledLayerViewer(QtGui.QWidget):
         tile_zoom = int(math.ceil(zoom))
         zoom_ratio = zoom % 1.0
         if(zoom_ratio == 0.0):
-            tile_size = full_tile_size
+            tile_size = self.full_tile_size
         #if the fraction is below 1/256, use the previous whole zoom level
-        elif(zoom_ratio < 1.0 / full_tile_size):
+        elif(zoom_ratio < 1.0 / self.full_tile_size):
             tile_zoom -= 1
-            tile_size = full_tile_size 
+            tile_size = self.full_tile_size
         else:
-            tile_size = int(half_tile_size + half_tile_size * zoom_ratio)
+            tile_size = int(self.half_tile_size+ self.half_tile_size* zoom_ratio)
         return tile_size, tile_zoom
             
     def __size_by_zoom(self,zoom):
@@ -111,7 +127,7 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.zoom = max(0.0,self.zoom + numSteps / 4)
         pt = event.pos()
         x, y = pt.x(), pt.y()
-        last_offset_x = self.top_left[0] - x
+        last_offset_x = self.top_lFileeft[0] - x
         last_offset_y = self.top_left[1] - y
         size_ratio = float(self.__size_by_zoom(self.zoom)) / self.__size_by_zoom(last_zoom)        
         new_offset_x = int(last_offset_x * size_ratio)
@@ -191,7 +207,7 @@ class QTiledLayerViewer(QtGui.QWidget):
             for x_tile in xrange(start_tile_x,end_tile_x):
                 y = y_start
                 for y_tile in xrange(start_tile_y,end_tile_y):
-                    tile = self.tile(ix_layer,tile_zoom,x_tile,y_tile,tile_size)
+                    tile = self.tile(ix_layer,tile_zoom,x_tile,y_tile,tile_size,self.full_tile_size)
                     if(tile is not None):
                         qp.drawImage(x,y,tile)
                     tiles_drawn += 1
@@ -212,15 +228,18 @@ class QTiledLayerViewer(QtGui.QWidget):
         
 
 class TileLayer(MBTilesTileStore):
-
+    
     def __init__(self, mbtiles_filename, **kwargs):
         '''
         Constructs a tiled image store connected to the current mbtilse sqllite database file.
         '''
         connection = sqlite3.connect(mbtiles_filename)
         super(TileLayer,self).__init__(connection,**kwargs)
+        if (u'tile_size' in self.metadata):
+            self.tile_size = int(self.metadata[u'tile_size'])
+        else:
+            self.tile_size = 256
         self.bounding_pyramid = self.get_bounding_pyramid()
-        
         self.alpha = 255
     
     def get_raw_data(self, tile):

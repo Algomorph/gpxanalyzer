@@ -3,10 +3,12 @@ Created on Mar 9, 2014
 
 @author: Gregory Kramida
 '''
-import abc
 from abc import abstractmethod
+import abc
+
 import numpy as np
 import pyopencl as cl
+
 
 class Filter():
     '''

@@ -5,12 +5,14 @@ Created on Jun 11, 2013
 @license: GNU v3
 @copyright: (c) Gregory Kramida 2013
 '''
-import os
-import re
-import numpy as np
-import pandas as pd
 from PIL import Image
 import gc
+import os
+import re
+
+import numpy as np
+import pandas as pd
+
 
 class Bunch(object):
     def __init__(self, adict):

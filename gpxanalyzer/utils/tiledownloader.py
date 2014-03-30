@@ -10,24 +10,22 @@ Created on Mar 7, 2014
 '''
 
 from gevent import monkey; monkey.patch_all()
-import gevent
-
-from data import Bunch
 from PIL import Image
-from xml.dom.minidom import parseString
-
+import abc
 import argparse
 import gc
-import sys
-import abc
+import gevent
+import json
 import math
 import os
+import psutil
+import sys
 import time
 import urllib2
-import json
-import psutil
+from xml.dom.minidom import parseString
 
 import console
+from data import Bunch
 
 
 class TileDownloader:

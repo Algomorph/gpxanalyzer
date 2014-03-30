@@ -3,9 +3,11 @@ Created on Mar 14, 2014
 
 @author: Gregory Kramida
 '''
-import os
 from PIL import Image
 import argparse
+import os
+
+
 parser = argparse.ArgumentParser(description="A tool for splitting larger tiles into multiple smaller tiles.")
 parser.add_argument("--input_folder", "-i", default="test",
                     help="path to folder with the input tiles")

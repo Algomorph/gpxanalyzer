@@ -6,12 +6,10 @@ Created on Mar 13, 2014
 @copyright: (c) Gregory Kramida 2014
 '''
 
-import gc
-
 from PySide import QtCore, QtGui
-import tilecloud
 
-import tiles
+import gpxanalyzer.tiles as tiles
+import os
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
     def __init__(self, config):
@@ -24,7 +22,10 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         #self.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
         self.setBackgroundRole(QtGui.QPalette.Dark)
         
-        self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer("/mnt/sdb2/Data/mbtiles/immunogold-colored/255_reduced.mbtiles"))
+        #startup = "/mnt/sdb2/Data/mbtiles/immunogold-colored/255_reduced.mbtiles"
+        startup = "/media/algomorph/Data/mbtiles/king_penguins_8192/db.sqlite"
+        #startup = "/media/algomorph/Data/mbtiles/king_penguins/db.sqlite"
+        self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer(startup))
         self.image_area.setBackgroundRole(QtGui.QPalette.Base)
         self.image_area.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
 

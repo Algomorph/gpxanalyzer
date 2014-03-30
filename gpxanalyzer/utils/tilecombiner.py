@@ -7,22 +7,28 @@ Created on Mar 12, 2014
 @copyright: (c) Gregory Kramida 2014
 '''
 import tiledownloader
+
+from PIL import Image
 import argparse
+import gc
 import os
 import re
 import sys
-from PIL import Image
-import image_size as imz
 import time
-import gc
-#import console
-import data as dm
 
+import data as dm
+import image_size as imz
+
+
+
+#import console
 overflow_modes = ["crop", "pad"]
 
 parser = argparse.ArgumentParser(description="A tool that combines small image tiles into bigger tiles.")
 parser.add_argument("--input_folder", "-i", default="test",
                     help="path to folder with the input tiles")
+parser.add_argument("--image_id", "-id", type=int, default=None,
+                    help="id of the image")
 parser.add_argument("--output_folder", "-o", default="test_output",
                     help="path to folder for the output tiles")
 parser.add_argument("--size", "-s", type=int, default=16384,
@@ -83,12 +89,9 @@ def new_tile_mode_from_n_channels(num_channels):
     else:
         raise ValueError("Unsupported number of channels for input tiles: %d" % num_channels)
     
-def try_to_retrieve_cell(x,y,downloader,settings, input_folder, full_img_path):
+def try_to_retrieve_cell(image_id, x,y,downloader,settings, input_folder, full_img_path):
     if(downloader is not None):
         print "Unable to open image %s. Attempting to load it from original source." % full_img_path
-        # TODO: add capability for user to specify the image id
-        photo_id_re = re.compile("\d+$")
-        image_id = int(photo_id_re.findall(input_folder)[0])
         if(settings is None):
             settings = downloader.retrieve_image_settings(image_id, verbose=True)
         # fetch from gigiapan
@@ -100,7 +103,7 @@ def try_to_retrieve_cell(x,y,downloader,settings, input_folder, full_img_path):
         raise IOError("Unable to open image %s. Aborting" % full_img_path)
     
         
-def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, downloader, verify,overflow_mode):
+def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id, downloader, verify,overflow_mode):
     # !!>>> original small tiles are referred to as "cells"
     # !!>>> output tiles are referred to as "tiles"
     # load one file to assess the cell size
@@ -110,7 +113,6 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, download
     ext_re = re.compile("(?<=\.)\w+")
     cell_extension = ext_re.findall(img_names[0])[0]
     cell_width, cell_height, n_channels = imz.get_image_info(first_cell_path)    
-    
     #TODO: support non-square rectangular tiles & cells
     if(cell_width != cell_height):
         raise ValueError("Only square input tiles of equal size supported! Found tile at %d x %d px." 
@@ -149,7 +151,6 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, download
 
     
     retrieval_set_up = False
-    image_id = None
     settings = None
     start = time.time()
     i_cell = 0
@@ -205,7 +206,7 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, download
                             img = None
                         # if there's no image, try to reload it
                         if(img is None):
-                            img,settings = try_to_retrieve_cell(cell_x,cell_y,downloader,settings,
+                            img,settings = try_to_retrieve_cell(image_id, cell_x,cell_y,downloader,settings,
                                                                 input_folder, full_img_path)
                             
                         # fill in the corresponding pixels in the output tile
@@ -231,12 +232,15 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, download
 if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
     verify = not args.skip_verify
+    if(args.image_id is None):
+        photo_id_re = re.compile("\d+(?=_\w+$)|(?<=\/)\d+$")
+        args.image_id = int(photo_id_re.findall(args.input_folder)[0])
     if(args.data_source is not None):
         downloader = tiledownloader.downloaders_by_data_source[args.data_source]
     else:
         downloader = None 
     combine_tiles(args.input_folder, args.output_folder,
-                  args.size, args.resize, downloader, verify, args.overflow_mode)
+                  args.size, args.resize, args.image_id, downloader, verify, args.overflow_mode)
         
     
     

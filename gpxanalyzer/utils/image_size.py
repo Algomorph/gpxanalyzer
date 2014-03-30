@@ -12,6 +12,7 @@
 import os
 import struct
 
+
 FILE_UNKNOWN = "Sorry, don't know how to get size for this file."
 
 class UnknownImageFormat(Exception):

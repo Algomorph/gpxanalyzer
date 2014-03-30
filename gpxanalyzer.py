@@ -1,17 +1,18 @@
+#!/usr/bin/env python
 '''
 Created on Mar 13, 2014
 
 @author: Gregory Kramida
 '''
 
-#!/usr/bin/env python
-import sys
 
-from gpxanalyzer.gui import GigapixelAnalyzer
 from PySide import QtGui
 import os
+import sys
+
 import gpxanalyzer.config as cfg
-   
+from gpxanalyzer.gui import GigapixelAnalyzer
+
 
 # main entry point
 if __name__ == '__main__':

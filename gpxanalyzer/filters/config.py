@@ -4,12 +4,14 @@ Created on Mar 9, 2014
 @author: Gregory Kramida
 '''
 
-import utils.dev as dev
-import utils.data as data
-import utils.image_size as img_sz
-import pyopencl as cl
-import os
 import math
+import os
+
+import pyopencl as cl
+import utils.data as data
+import utils.dev as dev
+import utils.image_size as img_sz
+
 
 class FilterConfig(object):
     """

@@ -3,12 +3,13 @@ Created on Feb 24, 2014
 
 @author: algomorph
 '''
-import pyopencl as cl
-import numpy as np
-import utils.data as dm
 from filter import Filter
+import numpy as np
+import pyopencl as cl
+import utils.data as dm
 from utils.oo import overrides
-    
+
+
 class SummedAreaTableFilter(Filter):
     '''
     Filter for computing the summed are tables on using a specific OpenCL context.

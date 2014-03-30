@@ -3,15 +3,16 @@ Created on Feb 24, 2014
 
 @author: algomorph
 '''
+import platform
 import psutil
-import pyopencl as cl
+import re
+import subprocess
+
 import OpenGL.GL as gl
 import OpenGL.GLUT as glut
 import OpenGL.extensions as gl_ext
-import platform
-import subprocess
-import re
 import data as dm
+import pyopencl as cl
 
 
 vendor_ids={

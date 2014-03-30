@@ -3,13 +3,14 @@ Created on Mar 6, 2014
 
 @author: algomorph
 '''
+import os
 import unittest
+
 from filters.config import FilterConfig
 import filters.sat as sat
 import numpy as np
 import pyopencl as cl
 import utils.dev as dev
-import os
 
 
 class Test(unittest.TestCase):

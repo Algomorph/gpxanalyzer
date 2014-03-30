@@ -6,20 +6,25 @@ Created on Mar 12, 2014
 @license: GNU v3
 @copyright: (c) Gregory Kramida 2014
 '''
-import tiledownloader as td
+
 from tilecombiner import combine_tiles, get_cell_counts
-import argparse
-import sys
-import data as dm
-import re
-import os
-import shutil
-import math
-from data import get_raster_names, find_extension
+
 from PIL import Image
-import image_size as imz
-from console import print_progress
+import argparse
+import math
+import os
+import re
+import shutil
+import sys
 import time
+
+from console import print_progress
+from data import get_raster_names, find_extension
+import data as dm
+import image_size as imz
+
+import tiledownloader as td
+
 
 def arrange_tile_levels_into_zxy(tile_dir):
     zoom_dirs = dm.get_subfolders(tile_dir)
@@ -44,7 +49,7 @@ def arrange_tile_levels_into_zxy(tile_dir):
             
             shutil.move(old_path,new_path)
 
-def pyramidize(orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False):
+def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False):
     tile_names = get_raster_names(orig_tile_dir)
     n_tiles_x, n_tiles_y = get_cell_counts(tile_names)
     first_tile_name = tile_names[0]
@@ -104,9 +109,10 @@ def pyramidize(orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_form
     for i_level in xrange(n_levels-1,0,-1):
         src_level_folder = pyramid_base_dir + os.path.sep + str(i_level)
         dst_level_folder = pyramid_base_dir + os.path.sep + str(i_level-1)
+        print ""
         print "Combining & reducing level %d into level %d" % (i_level, i_level-1)
         combine_tiles(src_level_folder, dst_level_folder, cell_width*2, 
-                      cell_width, downloader, verify = False, overflow_mode = "crop")
+                      cell_width, image_id, downloader, verify = False, overflow_mode = "crop")
     
     if(arrange_in_zxy_format):
         print "Arrainging in /z/x/y format..."
@@ -115,7 +121,7 @@ def pyramidize(orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_form
 ops = {"arrange_zxy":[lambda args: arrange_tile_levels_into_zxy(args.input_tile_directory),
                       """Takes the input folder with z-level subfolders by tiles named in \"x-y.ext\" 
 format and re-arranges the tiles in-place to form /z/x/y folder structure."""],
-       "pyramidize":[lambda args : pyramidize(args.input_tile_directory, args.output_tile_directory, args.data_source, True),
+       "pyramidize":[lambda args : pyramidize(args.image_id,args.input_tile_directory, args.output_tile_directory, args.data_source, True),
                      """Takes the input folder with just the base level of tiles in named in \"x-y.ext\"
 format and builds a complete /z/x/y pyramid in the output folder. Does not modify the input folder."""]}
 
@@ -128,6 +134,8 @@ for key, val in ops.itervalues():
 parser = argparse.ArgumentParser(description="A tool that arranges the x-y.format tiles into /z/x/y tile folder structure.")
 parser.add_argument("--input_tile_directory", "-i", default="test",
                     help="path to the input directory")
+parser.add_argument("--image_id", "-id", type=int, default=None,
+                    help="id of the image")
 parser.add_argument("--data_source", "-ds", default=None,
                     metavar="DATA_SOURCE",
                     choices=td.downloaders_by_data_source.keys(),
@@ -135,7 +143,7 @@ parser.add_argument("--data_source", "-ds", default=None,
                     % str(td.downloaders_by_data_source.keys()))
 parser.add_argument("--operation", "-op", default=ops.keys()[0],
                     metavar="OPERATION",
-                    choices=ops,
+                    choices=ops.keys(),
                     help=ops_help_string)
 parser.add_argument("--output_tile_directory", "-o", default=None,
                     help="path to the input directory")
@@ -143,6 +151,9 @@ parser.add_argument("--output_tile_directory", "-o", default=None,
 
 if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
+    if(args.image_id is None):
+        photo_id_re = re.compile("\d+(?=_\w+$)|(?<=\/)\d+$")
+        args.image_id = int(photo_id_re.findall(args.input_folder)[0])
     if(args.output_tile_directory is None):
         args.output_tile_directory = args.input_tile_directory + "_pyramid"
     ops[args.operation][0](args)

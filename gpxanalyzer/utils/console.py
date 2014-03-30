@@ -9,6 +9,7 @@ Created on Mar 9, 2014
 import sys
 import time
 
+
 def query_yes_no(question, default="yes"):
     """
     Ask a yes/no question via raw_input() and return their answer.

@@ -7,8 +7,7 @@ import ConfigParser
 import os
 import re
 
-
-from utils.data import Bunch
+from gpxanalyzer.utils.data import Bunch
 
 default_setting_hash = {"System":{"max_tile_mem":"4096MB"
                                   },
