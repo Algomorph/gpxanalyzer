@@ -24,13 +24,13 @@ byte_sizes = {"B":1,
 CONFIG_FILE_NAME = "gpxanalyzer.cfg"
 
 #TODO: make these recursive instead and define the bunch-to-hash inside the Bunch class
-def setting_hash_to_bunch(setting_hash):
+def config_hash_to_bunch(setting_hash):
     interim = {}
     for key, section_hash in setting_hash.items():
         interim[key] = Bunch(section_hash)
     return Bunch(interim)
 
-def setting_hash_to_parser(setting_hash):
+def config_hash_to_parser(setting_hash):
     config = AutoConfigParser()
     for section, section_hash in setting_hash.items():
         config.add_section(section)
@@ -38,7 +38,7 @@ def setting_hash_to_parser(setting_hash):
             config.set(section,key,val)
     return config
 
-def setting_bunch_to_hash(setting_bunch):
+def config_bunch_to_hash(setting_bunch):
     setting_hash = {}
     for key, section_bunch in setting_bunch.__dict__.items():
         setting_hash[key] = section_bunch.__dict__
@@ -87,18 +87,28 @@ class AutoConfigParser(ConfigParser.ConfigParser):
             for option in self.options(section):
                 section_hash[option] = self.parse_option(section,option)
             config_hash[section] = section_hash
-        return setting_hash_to_bunch(config_hash)
+        return config_hash_to_bunch(config_hash)
     
 def load_config(directory, verbose = False):
+    '''
+    Loads the configuration from the given directory if the configuration file is present.
+    Loads the defaults otherwise, saving them to the directory.
+    @type directory: str
+    @param directory: location (directory) where to try and read the config file from (path excluding the file name) and where to save default config if no config is there.
+    @type verbose: bool
+    @param verbose: print notifications
+    @type return: gpxanalyzer.utils.data.Bunch
+    @return configuration
+    '''
     path = directory + os.path.sep + CONFIG_FILE_NAME
     if os.path.isfile(path):
-        config = setting_hash_to_parser(default_setting_hash)
+        config = config_hash_to_parser(default_setting_hash)
         config.read(path)
         if(verbose):
             print "Configuration loaded from file {0:s}".format(path)
         return config.to_bunch()
     else:
-        config = setting_hash_to_parser(default_setting_hash)
+        config = config_hash_to_parser(default_setting_hash)
         conf_file = open(path, "w")
         config.write(conf_file)
         if(verbose):
@@ -106,4 +116,22 @@ def load_config(directory, verbose = False):
         conf_file.close()
     return config.to_bunch()
         
+def save_config(directory, config_bunch, verbose = False):
+    '''
+    Saves the given configuration in the given directory.
+    @type directory: str
+    @param directory: location (directory) where to write the config file (path excluding the file name)
+    @type config_bunch: gpxanalyzer.utils.data.Bunch
+    @param config_bunch: the configuration to save
+    @type verbose: bool
+    @param verbose: print save notification
+    '''
+    path = directory + os.path.sep + CONFIG_FILE_NAME
+    config_hash = config_bunch_to_hash(config_bunch)
+    config = config_hash_to_parser(config_hash)
+    conf_file = open(path, "w")
+    config.write(conf_file)
+    if(verbose):
+        print "Written configuration to {0:s}".format(path)
+    conf_file.close()
     

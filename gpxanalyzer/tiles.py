@@ -20,7 +20,7 @@ from PIL import ImageQt
 
 
 def PIL_to_QImage(pil_img):
-    #TODO: add layer alpha support
+#    TODO: add layer alpha support
 #     raw_data = pil_img.tostring('raw','RGB')
 #     qimage = QtGui.QImage(raw_data, pil_img.size[0], pil_img.size[1], QtGui.QImage.Format_RGB888)
 #     return qimage;
@@ -127,7 +127,7 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.zoom = max(0.0,self.zoom + numSteps / 4)
         pt = event.pos()
         x, y = pt.x(), pt.y()
-        last_offset_x = self.top_lFileeft[0] - x
+        last_offset_x = self.top_left[0] - x
         last_offset_y = self.top_left[1] - y
         size_ratio = float(self.__size_by_zoom(self.zoom)) / self.__size_by_zoom(last_zoom)        
         new_offset_x = int(last_offset_x * size_ratio)
@@ -229,11 +229,12 @@ class QTiledLayerViewer(QtGui.QWidget):
 
 class TileLayer(MBTilesTileStore):
     
-    def __init__(self, mbtiles_filename, **kwargs):
+    def __init__(self, mbtiles_filepath, **kwargs):
         '''
         Constructs a tiled image store connected to the current mbtilse sqllite database file.
         '''
-        connection = sqlite3.connect(mbtiles_filename)
+        self.__file_path = mbtiles_filepath
+        connection = sqlite3.connect(mbtiles_filepath)
         super(TileLayer,self).__init__(connection,**kwargs)
         if (u'tile_size' in self.metadata):
             self.tile_size = int(self.metadata[u'tile_size'])
@@ -241,6 +242,10 @@ class TileLayer(MBTilesTileStore):
             self.tile_size = 256
         self.bounding_pyramid = self.get_bounding_pyramid()
         self.alpha = 255
+    
+    @property
+    def file_path(self):
+        return self.__file_path
     
     def get_raw_data(self, tile):
         try:
