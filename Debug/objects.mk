@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -lopencv_core -lopencv_stitching -lpython2.7 -lOpenCL
+LIBS := -lopencv_core -lpython2.7 -lOpenCL
 

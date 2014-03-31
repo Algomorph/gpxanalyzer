@@ -5,12 +5,12 @@
  *      Author: algomorph
  */
 
+
+
 #ifndef PYTHONPORTAUX_H_
 #define PYTHONPORTAUX_H_
 #include <pythonPort.h>
-#include <opencv2/core/core.hpp>
-#include <opencv2/core/utility.hpp>
-#include <opencv2/core/types_c.h>
+
 using namespace std;
 
 static int to_ok(PyTypeObject *to)
@@ -99,7 +99,6 @@ static inline int* refcountFromPyObject(const PyObject* obj)
 {
     return (int*)((size_t)obj + REFCOUNT_OFFSET);
 }
-typedef int UMatUsageFlags;
 
 class NumpyAllocator : public MatAllocator
 {

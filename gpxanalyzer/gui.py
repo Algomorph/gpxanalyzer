@@ -6,11 +6,8 @@ Created on Mar 13, 2014
 @copyright: (c) Gregory Kramida 2014
 '''
 
-import gc
-
 from PySide import QtCore, QtGui
-import tilecloud
-
+import os
 import tiles
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
@@ -24,7 +21,11 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         #self.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
         self.setBackgroundRole(QtGui.QPalette.Dark)
         
-        self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer("/mnt/sdb2/Data/mbtiles/immunogold-colored/255_reduced.mbtiles"))
+        if (hasattr(self.config.system, "startup_file_path") and os.path.exists(self.config.system.startup_file_path)):
+            self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer(self.config.system.startup_file_path))
+        else:
+            self.image_area = tiles.QTiledLayerViewer()
+            
         self.image_area.setBackgroundRole(QtGui.QPalette.Base)
         self.image_area.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
 
