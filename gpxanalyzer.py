@@ -5,15 +5,12 @@ Created on Mar 13, 2014
 @author: Gregory Kramida
 '''
 
-
 from gpxanalyzer.main_window import GigapixelAnalyzer
 from PySide import QtGui
 import os
 import sys
 
 import gpxanalyzer.config as cfg
-
-
 
 # main entry point
 if __name__ == '__main__':

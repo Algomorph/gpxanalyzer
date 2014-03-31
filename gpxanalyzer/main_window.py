@@ -6,7 +6,7 @@ Created on Mar 13, 2014
 @copyright: (c) Gregory Kramida 2014
 '''
 
-from gpxanalyzer.gui import utilities as uts
+from gpxanalyzer.gui import combiner as uts
 from PySide import QtCore, QtGui
 import os
 import tiles
@@ -44,6 +44,12 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.resize(800,600)
         self.show()
         #self.showMaximized()
+        
+    def save_config(self):
+        cfg.save_config(self.startup_dir, self.config, True)
+
+    def closeEvent(self,event):
+        self.save_config()
 
 
     def open(self):
@@ -54,9 +60,9 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
             self.image_area.add_layer(layer)
             
     def open_tile_combiner(self):
-        dialog = uts.CombineTilesDialog(self)
-        dialog.resize(400,500)
-        retval = dialog.exec_()
+        dialog = uts.CombineTilesDialog(self.config,self)
+        dialog.resize(1024,600)
+        dialog.exec_()
 
     def about(self):
         QtGui.QMessageBox.about(self, "About Gigapixel Analyzer",

@@ -13,6 +13,18 @@ default_setting_hash = {"system":
                             {"max_tile_mem":"4096MB",
                              "startup_file_path":"/mnt/sdb2/Data/mbtiles/immunogold-colored/255.mbtiles"
                              },
+                        "tilecombiner":
+                            {
+                             "input_folder":"/mnt/sdb2/Data/gigapan/117375",
+                             "output_folder":"/mnt/sdb2/Data/gigapan/117375_8192",
+                             "size":"8192",
+                             "verify":"True",
+                             "resize":"False",
+                             "resize_size":"8192",
+                             "data_source":"gigapan",
+                             "image_id":"117375",
+                             "overflow_mode":"crop"
+                             }
                         }
 
 byte_sizes = {"B":1,
@@ -74,6 +86,8 @@ class AutoConfigParser(ConfigParser.ConfigParser):
             return float(str_opt)
         elif(re.match("^\d+\s*(?:KB|B|MB|GB)$",str_opt,re.IGNORECASE)):
             return self._parse_byte_size(str_opt)
+        elif(re.match("True|False",str_opt,re.IGNORECASE)):
+            return str_opt == "True"
         else:
             return str_opt
         

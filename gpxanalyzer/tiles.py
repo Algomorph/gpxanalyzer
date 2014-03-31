@@ -21,9 +21,6 @@ from PIL import ImageQt
 
 def PIL_to_QImage(pil_img):
 #    TODO: add layer alpha support
-#     raw_data = pil_img.tostring('raw','RGB')
-#     qimage = QtGui.QImage(raw_data, pil_img.size[0], pil_img.size[1], QtGui.QImage.Format_RGB888)
-#     return qimage;
     return ImageQt.ImageQt(pil_img)
 
 class QTiledLayerViewer(QtGui.QWidget):
