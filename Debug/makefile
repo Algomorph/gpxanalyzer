@@ -50,7 +50,7 @@ all: libgpxanalyzer.so
 libgpxanalyzer.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C++ Linker'
-	g++ -shared -o "libgpxanalyzer.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -L/usr/local/lib -shared -o "libgpxanalyzer.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

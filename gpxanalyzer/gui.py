@@ -7,9 +7,8 @@ Created on Mar 13, 2014
 '''
 
 from PySide import QtCore, QtGui
-
-import gpxanalyzer.tiles as tiles
 import os
+import tiles
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
     def __init__(self, config):
@@ -23,9 +22,13 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.setBackgroundRole(QtGui.QPalette.Dark)
         
         #startup = "/mnt/sdb2/Data/mbtiles/immunogold-colored/255_reduced.mbtiles"
-        startup = "/media/algomorph/Data/mbtiles/king_penguins_8192/db.sqlite"
+        #startup = "/media/algomorph/Data/mbtiles/king_penguins_8192/db.sqlite"
         #startup = "/media/algomorph/Data/mbtiles/king_penguins/db.sqlite"
-        self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer(startup))
+        if (hasattr(self.config.system, "startup_file_path") and os.path.exists(self.config.system.startup_file_path)):
+            self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer(self.config.system.startup_file_path))
+        else:
+            self.image_area = tiles.QTiledLayerViewer()
+            
         self.image_area.setBackgroundRole(QtGui.QPalette.Base)
         self.image_area.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
 

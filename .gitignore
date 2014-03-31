@@ -8,6 +8,9 @@
 *.dylib
 
 
+# Generated Configuration files
+*.cfg
+
 # Compiled Static libraries
 *.lai
 *.la
