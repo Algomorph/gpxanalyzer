@@ -104,14 +104,11 @@ def try_to_retrieve_cell(image_id, x,y,downloader,settings, input_folder, full_i
         raise IOError("Unable to open image %s. Aborting" % full_img_path)
 
 def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id, downloader, verify, 
-                  overflow_mode, progress_callback = None, stdout = None, stderr = None):
+                  overflow_mode, progress_callback = None):
     # !!>>> original small tiles are referred to as "cells"
     # !!>>> output tiles are referred to as "tiles"
     # load one file to assess the cell size
-    
-    if(stdout is not None and stderr is not None):
-        sys.stdout = stdout
-        sys.stderr = stderr
+    #TODO: redistribute the code into smaller subroutines
     
     img_names = dm.get_raster_names(input_folder)
     first_cell_path = input_folder + os.path.sep + img_names[0]
@@ -154,8 +151,6 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id
     if(not os.path.exists(output_folder)):
         os.makedirs(output_folder)
 
-    
-    retrieval_set_up = False
     settings = None
     start = time.time()
     i_cell = 0
@@ -182,10 +177,14 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id
     start_cell_x = 0
     end_cell_x = min(side_cell_count, n_cells_x)
     
+    
     if(progress_callback is None):
         report = print_progress 
     else:
         report = progress_callback
+    
+    print overflow_mode
+    print report
     
     for tile_x in range(0, n_tiles_x):
         start_cell_y = 0
@@ -226,9 +225,12 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id
                         report(i_cell, n_cells, time.time() - start, cell_x, cell_y) 
                         i_cell += 1
                         local_y += cell_size
+                        
                     local_x += cell_size
+                    
                 # end cell loop
                 # write output tile to disk
+                
                 tile = resize(tile)
                 tile.save(output_tile_path, "PNG")
                 del tile

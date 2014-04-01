@@ -16,12 +16,30 @@ import gipc
 from gpxanalyzer.utils import tilecombiner
 
 class ComboWorker(QtCore.QThread):
+    stop_message = "stop"
+    
     def __init__(self,args, parent = None):
         super(ComboWorker,self).__init__(parent)
         self.args = args
+        self.stop = False
+        
+    def stop_combiner(self,*args):
+        tilecombiner.print_progress(*args)
+        if(self.stop):
+            raise RuntimeError(self.stop_message)
         
     def run(self):
-        tilecombiner.combine_tiles(*self.args)
+        try:
+            tilecombiner.combine_tiles(*self.args,progress_callback = self.stop_combiner)
+        except RuntimeError as e:
+            if(e.message == self.stop_message):
+                print "Execution stopped."
+            else:
+                #rethrow the error
+                raise RuntimeError    
+            
+            
+    
 
 class Pow2SpinBox(QtGui.QSpinBox):
     def __init__(self,parent = None):
@@ -39,6 +57,7 @@ class Pow2SpinBox(QtGui.QSpinBox):
         self.setValue(self.allowed_vals[idx])
 
 class CombineTilesDialog(QtGui.QDialog):
+    stop_requested = QtCore.Signal()
     def __init__(self, config, parent = None):
         self.config = config
         super(CombineTilesDialog, self).__init__(parent)
@@ -83,9 +102,7 @@ class CombineTilesDialog(QtGui.QDialog):
         
 ##################################################################
     def initialize_components(self):
-        #combine button
-        self.combine_btn = QtGui.QPushButton("Combine",self)
-        self.combine_btn.clicked.connect(self.combine)
+        
         
         #input & output directory stuff
         self.input_dir_label = QtGui.QLabel("Input Directory:",self)
@@ -146,6 +163,12 @@ class CombineTilesDialog(QtGui.QDialog):
         
         #verification stuff
         self.verify_check_box = QtGui.QCheckBox("Verify combined tiles")
+        #combine button
+        self.combine_btn = QtGui.QPushButton("Combine",self)
+        self.combine_btn.clicked.connect(self.combine)
+        
+        self.halt_btn = QtGui.QPushButton("Halt",self)
+        self.halt_btn.clicked.connect(self.halt)
         
         #console stuff
         self.console_label = QtGui.QLabel("Console:",self)
@@ -159,10 +182,10 @@ class CombineTilesDialog(QtGui.QDialog):
 
         #set up console stuff
         stdout = OutputWrapper(self, True, True)
-        stdout.outputWritten.connect(self.handleOutput)
+        stdout.outputWritten.connect(self.handle_output)
         self.stdout = stdout
         stderr = OutputWrapper(self, False, True)
-        stderr.outputWritten.connect(self.handleOutput)
+        stderr.outputWritten.connect(self.handle_output)
         self.stderr = stderr
         self.prev_del = False
         
@@ -194,9 +217,10 @@ class CombineTilesDialog(QtGui.QDialog):
         main_layout.addWidget(self.verify_check_box, 17, 0)
         
         main_layout.addWidget(self.combine_btn, 18, 0)
+        main_layout.addWidget(self.halt_btn, 19, 0)
         
         main_layout.addWidget(self.console_label,0,1,1,3)
-        main_layout.addWidget(self.console,1,1,17,3)
+        main_layout.addWidget(self.console,1,1,18,3)
         main_layout.setColumnStretch(0,1)
         main_layout.setColumnStretch(1,5)
         self.setLayout(main_layout)
@@ -205,38 +229,35 @@ class CombineTilesDialog(QtGui.QDialog):
     def sizeHint(self):
         return QtCore.QSize(1024,768)
         
-    def handleOutput(self, text, stdout):
+    def handle_output(self, text, stdout):
         '''
         Duplicates stdout to the console.
         '''
-        #TODO:fix line erasing
+        #TODO:fix last-line erasing
         color = self.console.textColor()
-        
-#         if self.prev_del:
-#             #store_pos = self.console.textCursor()
-#             self.console.moveCursor(QtGui.QTextCursor.End,QtGui.QTextCursor.MoveAnchor)
-#             self.console.moveCursor(QtGui.QTextCursor.StartOfLine,QtGui.QTextCursor.MoveAnchor)
-#             self.console.moveCursor(QtGui.QTextCursor.End,QtGui.QTextCursor.KeepAnchor)
-#             self.console.textCursor().removeSelectedText()
-#             self.console.textCursor().deletePreviousChar()
-#             self.prev_del = False
-            
-        
+       
         self.console.setTextColor(color if stdout else self._err_color)
         self.console.moveCursor(QtGui.QTextCursor.End)
         self.console.insertPlainText(text)
         self.console.setTextColor(color)
-#         if "\r" in text:
-#             self.prev_del = True
+        if(self.console.document().lineCount() > 300):
+            self.console.moveCursor(QtGui.QTextCursor.Start,QtGui.QTextCursor.MoveAnchor),
+            self.console.moveCursor(QtGui.QTextCursor.EndOfLine,QtGui.QTextCursor.MoveAnchor)
+            self.console.moveCursor(QtGui.QTextCursor.Start,QtGui.QTextCursor.KeepAnchor)
+            self.console.textCursor().removeSelectedText()
+            self.console.moveCursor(QtGui.QTextCursor.End)
         
         
+    
+    def halt(self):
+        if(self.worker):
+            self.worker.stop = True
         
     def combine(self):
         '''
         Main tilecombiner routine. Reads off the settings and tries to combine the tiles,
         outputing progress and other stuff things to the console.
         '''
-        print "in"
         tile_to_size = None
         if self.resize_check_box.isChecked():
             tile_to_size = self.resize_size_spinbox.value()
@@ -249,13 +270,10 @@ class CombineTilesDialog(QtGui.QDialog):
                 self.image_id_spinbox.value(), 
                 downloader, 
                 self.verify_check_box.isChecked(), 
-                self.overflow_mode_dropdown.currentText(), 
-                None)
+                self.overflow_mode_dropdown.currentText())
         cw = ComboWorker(args,self)
         cw.start()
         self.worker = cw
-
-            
             
     def configure_resize(self):
         '''

@@ -2,6 +2,8 @@
 Created on Mar 14, 2014
 
 @author: Gregory Kramida
+@license: GNU v3
+@copyright: (c) Gregory Kramida 2014
 '''
 from PIL import Image
 import argparse

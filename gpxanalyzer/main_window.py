@@ -9,7 +9,7 @@ Created on Mar 13, 2014
 from gpxanalyzer.gui import combiner as uts
 from PySide import QtCore, QtGui
 import os
-import tiles
+from gpxanalyzer import tiles
 import config as cfg
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
@@ -20,6 +20,7 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.init_gui()
 
     def init_gui(self):
+        self.setWindowIcon(QtGui.QIcon('icon.png'))
         self.printer = QtGui.QPrinter()
         #self.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
         self.setBackgroundRole(QtGui.QPalette.Dark)
