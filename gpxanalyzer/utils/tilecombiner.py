@@ -19,7 +19,6 @@ import time
 
 import data as dm
 import image_size as imz
-from console import OutputWrapper
 
 
 #import console

@@ -10,9 +10,7 @@ import gpxanalyzer.utils.tilecombiner as tc
 from PySide import QtCore,QtGui
 from gpxanalyzer.utils.console import OutputWrapper
 import os
-import sys
-import gevent
-import gipc
+
 from gpxanalyzer.utils import tilecombiner
 
 class ComboWorker(QtCore.QThread):
@@ -258,15 +256,15 @@ class CombineTilesDialog(QtGui.QDialog):
         Main tilecombiner routine. Reads off the settings and tries to combine the tiles,
         outputing progress and other stuff things to the console.
         '''
-        tile_to_size = None
         if self.resize_check_box.isChecked():
-            tile_to_size = self.resize_size_spinbox.value()
+            resize_to = self.resize_size_spinbox.value()
+        else:
+            resize_to = None
         downloader = tc.tiledownloader.downloaders_by_data_source[self.data_source_dropdown.currentText()]
-        tile_to_size = None
         args = (self.input_dir_line.text(), 
                 self.output_dir_line.text(), 
                 self.comb_size_spinbox.value(), 
-                tile_to_size, 
+                resize_to, 
                 self.image_id_spinbox.value(), 
                 downloader, 
                 self.verify_check_box.isChecked(), 
