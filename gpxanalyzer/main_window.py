@@ -93,7 +93,7 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.open_arranger_tool_action = QtGui.QAction("&Pyramidize Tiles...", self, shortcut="Ctrl+Shift+P",
                     triggered=self.open_tile_arranger)
         
-        self.set_startup_file_action = QtGui.QAction("&SetStartupFile",self,shortcut="Ctrl+Shift+F",
+        self.set_startup_file_action = QtGui.QAction("&Set Startup File...",self,shortcut="Ctrl+Shift+F",
                                                triggered=self.set_startup_file)
         
     def set_startup_file(self):

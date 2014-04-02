@@ -231,6 +231,7 @@ class CombineTilesDialog(QtGui.QDialog):
         Duplicates stdout to the console.
         '''
         #TODO:fix last-line erasing
+        #TODO: fix output handling so that two different tools with consoles can run at the same time
         color = self.console.textColor()
        
         self.console.setTextColor(color if stdout else self._err_color)

@@ -204,7 +204,7 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id
                         # fill in the corresponding pixels in the output tile
                         box = (local_x, local_y, local_x + img.size[0], local_y + img.size[1])
                         tile.paste(img, box)
-                        report(i_cell, n_cells, time.time(),"tiles", cell_x, cell_y) 
+                        report(i_cell, n_cells, start,"tiles", cell_x, cell_y) 
                         i_cell += 1
                         local_y += cell_size
                         
