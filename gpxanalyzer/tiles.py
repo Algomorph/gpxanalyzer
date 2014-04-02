@@ -71,6 +71,10 @@ class QTiledLayerViewer(QtGui.QWidget):
                 self.cache[coord] = image
                 self.cache_queue.append(coord)
                 self.cache_size += image.size[0]*image.size[1]*len(image.getbands())
+                #if the cache size exceeds limit, delete some of the tiles added earlier
+                #TODO: it seems that it's better to delete tiles that are "far away" - farthest in 
+                #the layer_ix, x,y,z coordinates instead of just removing the ones added first, i.e.
+                #user could be doing more panning after coming back to some earlier zoom level
                 while(self.cache_size > self.max_cache_size):
                     coord = self.cache_queue.popleft()
                     del self.cache[coord]
@@ -86,6 +90,9 @@ class QTiledLayerViewer(QtGui.QWidget):
         return None
     
     def __setitem__(self,index,layer):
+        if(len(self.layers) > index):
+            self.empty_cache()
+        self.__check_layer_size(layer)
         self.layers[index] = layer
         
     def __getitem__(self,index,layer):
@@ -98,6 +105,12 @@ class QTiledLayerViewer(QtGui.QWidget):
         else:
             if(layer.tile_size != self.full_tile_size):
                 raise ValueError("Layers with different tile sizes are not supported.")
+            
+    def empty_cache(self):
+        self.cache = {}
+        self.cache_queue=deque()
+        self.cache_size = 0
+        gc.collect()
     
     def add_layer(self,layer):
         self.__check_layer_size(layer)
@@ -108,6 +121,14 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.__check_layer_size(layer)
         self.layers.insert(index, layer)
         self.repaint()
+        
+    def switch_base_layer(self,layer):
+        self.layers[0] = layer
+        self.full_tile_size = layer.tile_size
+        self.half_tile_size = self.full_tile_size / 2
+        self.empty_cache()
+        self.repaint()
+        
     
     def __iter__(self):
         for layer in self.layers:
@@ -252,7 +273,12 @@ class TileLayer(MBTilesTileStore):
         if (u'tile_size' in self.metadata):
             self.tile_size = int(self.metadata[u'tile_size'])
         else:
-            self.tile_size = 256
+            data = self.tiles[TileCoord(0,0,0)]
+            parser= ImageFile.Parser()
+            parser.feed(data)
+            image = parser.close()
+            self.tile_size = image.size[0]
+            self.metadata[u'tile_size'] = unicode(self.tile_size)
         self.bounding_pyramid = self.get_bounding_pyramid()
         self.alpha = 255
     

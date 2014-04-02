@@ -10,7 +10,7 @@ from gpxanalyzer.gui.combiner_gui import CombineTilesDialog
 from gpxanalyzer.gui.arranger_gui import ArrangeTilesDialog
 from PySide import QtCore, QtGui
 import os
-import tiles
+import gpxanalyzer.tiles as tiles
 import config as cfg
 
 
@@ -56,11 +56,11 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
 
 
     def open(self):
-        file_path = QtGui.QFileDialog.getOpenFileName(self, "Open File",
-                QtCore.QDir.currentPath())[0]
-        if file_path:
+        file_path = str(QtGui.QFileDialog.getOpenFileName(self, "Open File",
+                QtCore.QDir.currentPath())[0])
+        if file_path is not None:
             layer = tiles.TileLayer(file_path)
-            self.image_area.add_layer(layer)
+            self.image_area.switch_base_layer(layer)
     
     #TODO figure out a way (Tabs, perhaps, or QThreads?) to 
     #get multiple tools AND the main interface usable at the same time.

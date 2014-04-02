@@ -47,6 +47,7 @@ class DbGenerator(QtCore.QThread):
     def run(self):
         logging.basicConfig(level=logging.DEBUG)
         mbutil.disk_to_mbtiles(self.args[0],self.args[1],**self.args[2])
+        print "\nDone"
      
 
 class ArrangeTilesDialog(QtGui.QDialog):

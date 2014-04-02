@@ -48,6 +48,31 @@ def arrange_tile_levels_into_zxy(tile_dir):
             new_path = x_dir + os.path.sep + str(y) + extension
             
             shutil.move(old_path,new_path)
+            
+def arrange_zxy_into_tile_levels(pyramid_dir):
+    zoom_dirs = dm.get_subfolders(pyramid_dir)
+    first_zm_dir = pyramid_dir + os.path.sep + zoom_dirs[0]
+    first_im_dir = first_zm_dir + os.path.sep + dm.get_subfolders(first_zm_dir)[0]
+    #coord_re = re.compile("\d\d\d\d")
+    
+    first_tile_name = dm.get_raster_names(first_im_dir)[0]
+    
+    extension = "." + find_extension(first_tile_name)
+    #TODO: add progress reporting (count the files in folders initially?)
+    for zoom_subfolder in zoom_dirs:
+        zoom_dir = pyramid_dir + os.path.sep + zoom_subfolder
+        x_subfolders = dm.get_subfolders(zoom_dir)[0]
+        for x_subfolder in x_subfolders:
+            x_dir = zoom_dir + os.path.sep + x_subfolder
+            tile_names = dm.get_raster_names(x_dir)
+            for tile_name in tile_names:
+                old_path = x_dir + os.path.sep + tile_name
+                x = int(x_subfolder)
+                y = int(re.findall("\d+",tile_name)[0])
+                new_name = "{0:04d}-{1:04d}.{2:s}".format(x,y,extension)
+                new_path = zoom_dir + os.path.sep + new_name
+                shutil.move(old_path,new_path)
+            shutil.rmtree(x_dir)
 
 def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False, progress_callback = None):
     tile_names = get_raster_names(orig_tile_dir)
