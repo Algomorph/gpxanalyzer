@@ -15,8 +15,10 @@ from tilecloud.store.mbtiles import MBTilesTileStore
 from tilecloud.lib.sqlite3_ import query
 import sys
 import PySide
+from collections import deque
 sys.modules['PyQt4'] = PySide
 from PIL import ImageQt
+import gc
 
 
 def PIL_to_QImage(pil_img):
@@ -24,8 +26,10 @@ def PIL_to_QImage(pil_img):
     return ImageQt.ImageQt(pil_img)
 
 class QTiledLayerViewer(QtGui.QWidget):
-    def __init__(self, first_layer = None):
+    def __init__(self, config, first_layer = None):
         super(QTiledLayerViewer,self).__init__()
+        self.config = config
+        self.max_cache_size = config.system.max_tile_cache_mem
         if(first_layer != None):
             self.layers = [first_layer]
             self.full_tile_size= first_layer.tile_size
@@ -37,7 +41,7 @@ class QTiledLayerViewer(QtGui.QWidget):
     def set_up_ui(self):
         self.setMinimumSize(512,512)
         self.cache = {}
-        self.cache_coords = []
+        self.cache_queue = deque()
         self.root = TileCoord(0, 0, 0)
         self.zoom = 1.0
         self.top_left = (0,0)
@@ -47,6 +51,7 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.start_mouse_y = 0
         self.tile_scale = 0
         self.pos = (0,0)
+        self.cache_size = 0
         
     
     def tile(self, index, z, x, y, tile_size, full_tile_size):
@@ -64,7 +69,13 @@ class QTiledLayerViewer(QtGui.QWidget):
             if self.cache is not None and image is not None:
                 coord = (index, z, x, y)
                 self.cache[coord] = image
-                self.cache_coords.append(coord)
+                self.cache_queue.append(coord)
+                self.cache_size += image.size[0]*image.size[1]*len(image.getbands())
+                while(self.cache_size > self.max_cache_size):
+                    coord = self.cache_queue.popleft()
+                    del self.cache[coord]
+                    gc.collect()
+                
                 
         if image is not None:
             if(tile_size != full_tile_size):

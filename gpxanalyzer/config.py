@@ -10,7 +10,7 @@ import re
 from gpxanalyzer.utils.data import Bunch
 
 default_setting_hash = {"system":
-                            {"max_tile_mem":"4096MB",
+                            {"max_tile_cache_mem":"4096MB",
                              "startup_file_path":"/mnt/sdb2/Data/mbtiles/immunogold-colored/255.mbtiles"
                              },
                         "tilecombiner":

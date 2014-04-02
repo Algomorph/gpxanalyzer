@@ -13,6 +13,7 @@ import os
 import tiles
 import config as cfg
 
+
 class GigapixelAnalyzer(QtGui.QMainWindow):
     def __init__(self, config, startup_dir):
         super(GigapixelAnalyzer, self).__init__()
@@ -30,9 +31,9 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         #startup = "/media/algomorph/Data/mbtiles/king_penguins_8192/db.sqlite"
         #startup = "/media/algomorph/Data/mbtiles/king_penguins/db.sqlite"
         if (hasattr(self.config.system, "startup_file_path") and os.path.exists(self.config.system.startup_file_path)):
-            self.image_area = tiles.QTiledLayerViewer(tiles.TileLayer(self.config.system.startup_file_path))
+            self.image_area = tiles.QTiledLayerViewer(self.config,tiles.TileLayer(self.config.system.startup_file_path))
         else:
-            self.image_area = tiles.QTiledLayerViewer()
+            self.image_area = tiles.QTiledLayerViewer(self.config)
             
         self.image_area.setBackgroundRole(QtGui.QPalette.Base)
         self.image_area.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
@@ -60,7 +61,9 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         if file_path:
             layer = tiles.TileLayer(file_path)
             self.image_area.add_layer(layer)
-            
+    
+    #TODO figure out a way (Tabs, perhaps, or QThreads?) to 
+    #get multiple tools AND the main interface usable at the same time.
     def open_tile_combiner(self):
         dialog = CombineTilesDialog(self.config,self)
         dialog.resize(1024,600)

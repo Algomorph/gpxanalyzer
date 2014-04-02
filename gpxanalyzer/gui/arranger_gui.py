@@ -11,7 +11,7 @@ from PySide import QtGui, QtCore
 from gpxanalyzer.utils.console import OutputWrapper, print_progress
 import os
 import mbutil
-
+import logging
 
 class PyramidBuildingSlave(QtCore.QThread):
     stop_message = "stop"
@@ -45,7 +45,8 @@ class DbGenerator(QtCore.QThread):
         self.stop = False
         
     def run(self):
-        mbutil.disk_to_mbtiles(*self.args)
+        logging.basicConfig(level=logging.DEBUG)
+        mbutil.disk_to_mbtiles(self.args[0],self.args[1],**self.args[2])
      
 
 class ArrangeTilesDialog(QtGui.QDialog):
