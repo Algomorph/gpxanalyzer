@@ -77,7 +77,7 @@ def query_yes_no(question, default="yes"):
             sys.stdout.write("Please respond with 'yes' or 'no' "\
                              "(or 'y' or 'n').\n")
 
-def print_progress(i_item, n_items, start_time, items_name = "items"):
+def print_progress(i_item, n_items, start_time, items_name = "items", x = None, y = None):
     elapsed = time.time() - start_time
     n_done = i_item+1
     frac_done = float(n_done) / n_items
@@ -86,7 +86,12 @@ def print_progress(i_item, n_items, start_time, items_name = "items"):
     hour_eta = int(eta) / 3600
     min_eta = int(eta-hour_eta*3600) / 60
     sec_eta = int(eta-hour_eta*3600-min_eta*60)
-    print '{0:.3%} done ({1:0} of {2:0} {3:s}), elapsed: {4:0} eta: {5:0} h {6:0} m {7:0} s'\
+    if(x is not None and y is not None):
+        print ('Last item: ({7:04d},{8:04d}). {0:.3%} done ({5:0} of {6:0} {9:s}), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'
+               .format(frac_done, hour_eta, min_eta, sec_eta, int(elapsed), i_item, n_items, x, y, items_name)
+                ),
+    else:
+        print '{0:.3%} done ({1:0} of {2:0} {3:s}), elapsed: {4:0} eta: {5:0} h {6:0} m {7:0} s'\
 .format(frac_done,
         i_item,
         n_items, 

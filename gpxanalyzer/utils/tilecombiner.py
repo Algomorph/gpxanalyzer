@@ -16,7 +16,7 @@ import re
 import sys
 import time
 
-
+from console import print_progress
 import data as dm
 import image_size as imz
 
@@ -62,20 +62,6 @@ def get_cell_counts(img_names):
         if cell_y > max_cell_y:
             max_cell_y = cell_y
     return max_cell_x + 1, max_cell_y + 1
-
-def print_progress(i_item, n_items, elapsed, x, y):
-        n_done = i_item + 1
-        frac_done = float(n_done) / n_items
-        total_time = elapsed / frac_done
-        eta = total_time - elapsed
-        hour_eta = int(eta) / 3600
-        min_eta = int(eta - hour_eta * 3600) / 60
-        sec_eta = int(eta - hour_eta * 3600 - min_eta * 60)
-        print ('Last tile: ({7:04d},{8:04d}). {0:.3%} done ({5:0} of {6:0} tiles), elapsed: {4:0} eta: {1:0} h {2:0} m {3:0} s'
-               .format(frac_done, hour_eta, min_eta, sec_eta, int(elapsed), i_item, n_items, x, y)
-                ),
-        sys.stdout.flush()
-        print "\r",
         
 def new_tile_mode_from_n_channels(num_channels):
     if(num_channels == 1):
@@ -182,9 +168,6 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id
     else:
         report = progress_callback
     
-    print overflow_mode
-    print report
-    
     for tile_x in range(0, n_tiles_x):
         start_cell_y = 0
         end_cell_y = min(side_cell_count, n_cells_y)
@@ -221,7 +204,7 @@ def combine_tiles(input_folder, output_folder, tile_size, tile_to_size, image_id
                         # fill in the corresponding pixels in the output tile
                         box = (local_x, local_y, local_x + img.size[0], local_y + img.size[1])
                         tile.paste(img, box)
-                        report(i_cell, n_cells, time.time() - start, cell_x, cell_y) 
+                        report(i_cell, n_cells, time.time(),"tiles", cell_x, cell_y) 
                         i_cell += 1
                         local_y += cell_size
                         

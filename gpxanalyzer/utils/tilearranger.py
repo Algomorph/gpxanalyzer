@@ -49,7 +49,7 @@ def arrange_tile_levels_into_zxy(tile_dir):
             
             shutil.move(old_path,new_path)
 
-def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False):
+def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False, progress_callback = None):
     tile_names = get_raster_names(orig_tile_dir)
     n_tiles_x, n_tiles_y = get_cell_counts(tile_names)
     first_tile_name = tile_names[0]
@@ -80,6 +80,12 @@ def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_i
     start_time = time.time()
     n_tiles = len(tile_names)
     i_tile = 0
+    
+    if(progress_callback is None):
+        report = print_progress 
+    else:
+        report = progress_callback
+    
     if(conversion_necessary):
         for tile_name in tile_names:
             new_tile_path = (pyramid_base_dir + os.path.sep 
@@ -89,7 +95,7 @@ def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_i
                 orig_tile_path = orig_tile_dir + os.path.sep + tile_name
                 im = Image.open(orig_tile_path)
                 im.save(new_tile_path,"PNG")
-            print_progress(i_tile, n_tiles, start_time, "tiles")
+            report(i_tile, n_tiles, start_time, "tiles")
             i_tile += 1
     else:
         for tile_name in tile_names:
@@ -100,7 +106,7 @@ def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_i
             if not os.path.exists(new_tile_path):
                 orig_tile_path = orig_tile_dir + os.path.sep + tile_name
                 shutil.copy(orig_tile_path,new_tile_path)
-            print_progress(i_tile, n_tiles, start_time, "tiles")
+            report(i_tile, n_tiles, start_time, "tiles")
             i_tile += 1
     
     downloader = td.downloaders_by_data_source[data_source]
@@ -112,7 +118,9 @@ def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_i
         print ""
         print "Combining & reducing level %d into level %d" % (i_level, i_level-1)
         combine_tiles(src_level_folder, dst_level_folder, cell_width*2, 
-                      cell_width, image_id, downloader, verify = False, overflow_mode = "crop")
+                      cell_width, image_id, downloader, verify = False, 
+                      overflow_mode = "crop", 
+                      progress_callback=progress_callback)
     
     if(arrange_in_zxy_format):
         print "Arrainging in /z/x/y format..."

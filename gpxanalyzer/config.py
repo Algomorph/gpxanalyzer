@@ -24,6 +24,14 @@ default_setting_hash = {"system":
                              "data_source":"gigapan",
                              "image_id":"117375",
                              "overflow_mode":"crop"
+                             },
+                         "tilearranger":
+                            {
+                             "input_folder":"/mnt/sdb2/Data/gigapan/117375",
+                             "output_folder":"/mnt/sdb2/Data/gigapan/117375_8192",
+                             "image_id":"117375",
+                             "data_source":"gigapan",
+                             "arrange_xyz":"True"
                              }
                         }
 

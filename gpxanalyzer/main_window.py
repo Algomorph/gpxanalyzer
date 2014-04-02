@@ -6,10 +6,11 @@ Created on Mar 13, 2014
 @copyright: (c) Gregory Kramida 2014
 '''
 
-from gpxanalyzer.gui import combiner as uts
+from gpxanalyzer.gui.combiner_gui import CombineTilesDialog
+from gpxanalyzer.gui.arranger_gui import ArrangeTilesDialog
 from PySide import QtCore, QtGui
 import os
-from gpxanalyzer import tiles
+import tiles
 import config as cfg
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
@@ -61,8 +62,13 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
             self.image_area.add_layer(layer)
             
     def open_tile_combiner(self):
-        dialog = uts.CombineTilesDialog(self.config,self)
+        dialog = CombineTilesDialog(self.config,self)
         dialog.resize(1024,600)
+        dialog.exec_()
+        
+    def open_tile_arranger(self):
+        dialog = ArrangeTilesDialog(self.config,self)
+        dialog.resize(1024,400)
         dialog.exec_()
 
     def about(self):
@@ -83,8 +89,11 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         
         self.open_combiner_tool_action = QtGui.QAction("&Combine Tiles...", self, shortcut="Ctrl+Shift+C",
                 triggered=self.open_tile_combiner)
+    
+        self.open_arranger_tool_action = QtGui.QAction("&Pyramidize Tiles...", self, shortcut="Ctrl+Shift+P",
+                    triggered=self.open_tile_arranger)
         
-        self.set_startup_file_action = QtGui.QAction("&SetStartupFile",self,shortcut="Ctrl+Shift+P",
+        self.set_startup_file_action = QtGui.QAction("&SetStartupFile",self,shortcut="Ctrl+Shift+F",
                                                triggered=self.set_startup_file)
         
     def set_startup_file(self):
@@ -109,8 +118,9 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.viewMenu = QtGui.QMenu("&View", self)
         self.viewMenu.addSeparator()
 
-        self.utilsMenu = QtGui.QMenu("&Utilities",self)
-        self.utilsMenu.addAction(self.open_combiner_tool_action)
+        self.toolsMenu = QtGui.QMenu("&Tools",self)
+        self.toolsMenu.addAction(self.open_combiner_tool_action)
+        self.toolsMenu.addAction(self.open_arranger_tool_action)
         
         self.helpMenu = QtGui.QMenu("&Help", self)
         self.helpMenu.addAction(self.about_action)
@@ -118,7 +128,7 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
 
         self.menuBar().addMenu(self.fileMenu)
         self.menuBar().addMenu(self.viewMenu)
-        self.menuBar().addMenu(self.utilsMenu)
+        self.menuBar().addMenu(self.toolsMenu)
         self.menuBar().addMenu(self.helpMenu)
         
 class SetStartupDialog(QtGui.QDialog):

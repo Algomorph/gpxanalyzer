@@ -21,14 +21,14 @@ class ComboWorker(QtCore.QThread):
         self.args = args
         self.stop = False
         
-    def stop_combiner(self,*args):
+    def stop_pyramid_builder(self,*args):
         tilecombiner.print_progress(*args)
         if(self.stop):
             raise RuntimeError(self.stop_message)
         
     def run(self):
         try:
-            tilecombiner.combine_tiles(*self.args,progress_callback = self.stop_combiner)
+            tilecombiner.combine_tiles(*self.args,progress_callback = self.stop_pyramid_builder)
         except RuntimeError as e:
             if(e.message == self.stop_message):
                 print "Execution stopped."
@@ -110,7 +110,7 @@ class CombineTilesDialog(QtGui.QDialog):
        
         browse_input_btn = QtGui.QPushButton("Browse..",self)
         browse_input_btn.setToolTip("Browse for the source directory.")
-        browse_input_btn.clicked.connect(self.browse_source)
+        browse_input_btn.clicked.connect(self.browse_input)
         self.browse_input_btn = browse_input_btn
         
         self.output_dir_label = QtGui.QLabel("Output Directory:",self)
@@ -120,7 +120,7 @@ class CombineTilesDialog(QtGui.QDialog):
         
         browse_output_btn = QtGui.QPushButton("Browse..",self)
         browse_output_btn.setToolTip("Browse for the destination directory.")
-        browse_output_btn.clicked.connect(self.browse_dest)
+        browse_output_btn.clicked.connect(self.browse_output)
         self.browse_output_btn = browse_output_btn
         
         #combine size
@@ -161,6 +161,8 @@ class CombineTilesDialog(QtGui.QDialog):
         
         #verification stuff
         self.verify_check_box = QtGui.QCheckBox("Verify combined tiles")
+        self.verify_check_box.stateChanged.connect(self.save_verify)
+        
         #combine button
         self.combine_btn = QtGui.QPushButton("Combine",self)
         self.combine_btn.clicked.connect(self.combine)
@@ -178,14 +180,11 @@ class CombineTilesDialog(QtGui.QDialog):
         console.setOverwriteMode(True)
         self.console = console
 
-        #set up console stuff
-        stdout = OutputWrapper(self, True, True)
+        #set up output wrapping
+        stdout = OutputWrapper(self, True, False)
         stdout.outputWritten.connect(self.handle_output)
-        self.stdout = stdout
-        stderr = OutputWrapper(self, False, True)
+        stderr = OutputWrapper(self, False, False)
         stderr.outputWritten.connect(self.handle_output)
-        self.stderr = stderr
-        self.prev_del = False
         
     def add_components(self):
         main_layout = QtGui.QGridLayout(self)
@@ -283,7 +282,7 @@ class CombineTilesDialog(QtGui.QDialog):
         else:
             self.resize_size_spinbox.setEnabled(False)
     
-    def browse_source(self):
+    def browse_input(self):
         '''
         Triggered by Browse.. button under source directory.
         Opens up a FileDialog allowing the user to choose a folder where the input tiles are located. 
@@ -297,7 +296,7 @@ class CombineTilesDialog(QtGui.QDialog):
             path = dialog.selectedFiles()[0]
             self.input_dir_line.setText(path)
     
-    def browse_dest(self):
+    def browse_output(self):
         '''
         Triggered by Browse.. button under destination directory.
         Opens up a FileDialog allowing the user to choose a folder where the output tiles are going
