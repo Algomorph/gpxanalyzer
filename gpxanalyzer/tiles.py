@@ -37,6 +37,7 @@ class QTiledLayerViewer(QtGui.QWidget):
     def set_up_ui(self):
         self.setMinimumSize(512,512)
         self.cache = {}
+        self.cache_coords = []
         self.root = TileCoord(0, 0, 0)
         self.zoom = 1.0
         self.top_left = (0,0)
@@ -46,6 +47,7 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.start_mouse_y = 0
         self.tile_scale = 0
         self.pos = (0,0)
+        
     
     def tile(self, index, z, x, y, tile_size, full_tile_size):
         #TODO: add layer alpha support
@@ -60,7 +62,10 @@ class QTiledLayerViewer(QtGui.QWidget):
             tile = Tile(tilecoord)
             image = self.layers[index].get_PIL_image(tile)
             if self.cache is not None and image is not None:
-                self.cache[(index, z, x, y)] = image
+                coord = (index, z, x, y)
+                self.cache[coord] = image
+                self.cache_coords.append(coord)
+                
         if image is not None:
             if(tile_size != full_tile_size):
                 new_size = (int(float(image.size[0]) / self.full_tile_size* tile_size),

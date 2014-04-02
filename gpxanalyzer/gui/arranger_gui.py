@@ -10,11 +10,14 @@ from gpxanalyzer.utils import tilearranger as pyr
 from PySide import QtGui, QtCore
 from gpxanalyzer.utils.console import OutputWrapper, print_progress
 import os
+import mbutil
 
 
 class PyramidBuildingSlave(QtCore.QThread):
     stop_message = "stop"
-    
+    '''
+    A thread that launches pyramidization process
+    '''
     def __init__(self,args, parent = None):
         super(PyramidBuildingSlave,self).__init__(parent)
         self.args = args
@@ -33,7 +36,17 @@ class PyramidBuildingSlave(QtCore.QThread):
                 print "Execution stopped."
             else:
                 #rethrow the error
-                raise RuntimeError 
+                raise RuntimeError
+            
+class DbGenerator(QtCore.QThread):
+    def __init__(self,args, parent = None):
+        super(DbGenerator,self).__init__(parent)
+        self.args = args
+        self.stop = False
+        
+    def run(self):
+        mbutil.disk_to_mbtiles(*self.args)
+     
 
 class ArrangeTilesDialog(QtGui.QDialog):
     def __init__(self,config,parent = None):
@@ -56,6 +69,8 @@ class ArrangeTilesDialog(QtGui.QDialog):
         self.config.tilearranger.input_folder = self.input_dir_line.text()
     def save_output_directory(self):
         self.config.tilearranger.output_folder = self.output_dir_line.text()
+    def save_db_filename(self):
+        self.config.tilearranger.db_filename = self.db_file_name_line.text()
         
 ##################################################################
     def initialize_components(self):
@@ -94,12 +109,24 @@ class ArrangeTilesDialog(QtGui.QDialog):
         self.image_id_spinbox = image_id_spinbox
         
         #arranging style stuff
-        self.arrange_xyz_check_box = QtGui.QCheckBox("Arrange the output in z/x/y structure")
+        self.arrange_xyz_check_box = QtGui.QCheckBox("Arrange the output in z/x/y structure right away")
         self.arrange_xyz_check_box.stateChanged.connect(self.save_arrange_xyz)
         
         #pyramidize button
         self.pyramidize_btn = QtGui.QPushButton("Pyramidize",self)
         self.pyramidize_btn.clicked.connect(self.launch_pyramidization)
+        
+        self.halt_btn = QtGui.QPushButton("Halt Pyramidization",self)
+        self.halt_btn.clicked.connect(self.halt)
+        
+        #sqlite database stuff
+        self.db_file_name_label = QtGui.QLabel("SQLite database file name: ")
+        self.db_file_name_line = QtGui.QLineEdit(self)
+        self.db_file_name_line.textChanged.connect(self.save_db_filename)
+        self.generate_db_btn = QtGui.QPushButton("Generate Database", self)
+        self.generate_db_btn.setToolTip("Generate the sqlite mbtiles file.\n This can only be done \
+when the output folder contains the entire image pyramid using the z/x/y structure.")
+        self.generate_db_btn.clicked.connect(self.generate_db)
         
         #console stuff
         self.console_label = QtGui.QLabel("Console:",self)
@@ -135,6 +162,10 @@ class ArrangeTilesDialog(QtGui.QDialog):
             self.console.textCursor().removeSelectedText()
             self.console.moveCursor(QtGui.QTextCursor.End)
     
+    def halt(self):
+        if(self.worker):
+            self.worker.stop = True
+    
     def launch_pyramidization(self):
         args = (self.image_id_spinbox.value(), 
                 self.input_dir_line.text(), 
@@ -144,6 +175,16 @@ class ArrangeTilesDialog(QtGui.QDialog):
         aw = PyramidBuildingSlave(args,self)
         aw.start()
         self.worker = aw
+        
+    def generate_db(self):
+        args = (self.output_dir_line.text(),
+                self.output_dir_line.text() + os.path.sep + self.db_file_name_line.text(),
+                {"format":"png",
+                 "scheme":"xyz"}
+                )
+        dbw = DbGenerator(args,self)
+        dbw.start()
+        self.db_worker = dbw
         
     
     def browse_input(self):
@@ -184,6 +225,7 @@ class ArrangeTilesDialog(QtGui.QDialog):
         self.data_source_dropdown.setCurrentIndex(tdl.downloaders_by_data_source.keys().index(config.data_source))
         self.image_id_spinbox.setValue(config.image_id)
         self.arrange_xyz_check_box.setChecked(config.arrange_xyz)
+        self.db_file_name_line.setText(config.db_filename)
     
     def add_components(self):
         main_layout = QtGui.QGridLayout(self)
@@ -204,9 +246,13 @@ class ArrangeTilesDialog(QtGui.QDialog):
         main_layout.addWidget(self.arrange_xyz_check_box, 10, 0)
         
         main_layout.addWidget(self.pyramidize_btn, 11, 0)
+        main_layout.addWidget(self.halt_btn,12,0)
+        main_layout.addWidget(self.db_file_name_label,13,0)
+        main_layout.addWidget(self.db_file_name_line,14,0)
+        main_layout.addWidget(self.generate_db_btn,15,0)
         
         main_layout.addWidget(self.console_label,0,1,1,3)
-        main_layout.addWidget(self.console,1,1,11,3)
+        main_layout.addWidget(self.console,1,1,15,3)
         main_layout.setColumnStretch(0,1)
         main_layout.setColumnStretch(1,5)
         self.setLayout(main_layout)

@@ -31,7 +31,8 @@ default_setting_hash = {"system":
                              "output_folder":"/mnt/sdb2/Data/gigapan/117375_8192",
                              "image_id":"117375",
                              "data_source":"gigapan",
-                             "arrange_xyz":"True"
+                             "arrange_xyz":"True",
+                             "db_filename":"db.mbtiles"
                              }
                         }
 
