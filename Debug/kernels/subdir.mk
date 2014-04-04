@@ -4,19 +4,13 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 CL_SRCS += \
-../kernels/imsat.cl \
-../kernels/sat.cl \
-../kernels/test_kernel.cl 
+../kernels/cs.cl 
 
 OBJS += \
-./kernels/imsat.o \
-./kernels/sat.o \
-./kernels/test_kernel.o 
+./kernels/cs.o 
 
 CL_DEPS += \
-./kernels/imsat.d \
-./kernels/sat.d \
-./kernels/test_kernel.d 
+./kernels/cs.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

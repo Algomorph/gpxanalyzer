@@ -3,16 +3,16 @@ Created on Feb 24, 2014
 
 @author: algomorph
 '''
-from filter import Filter
+from filter import InPlaceFilter
 import numpy as np
 import pyopencl as cl
 import utils.data as dm
 from utils.oo import overrides
 
 
-class SummedAreaTableFilter(Filter):
+class SummedAreaTableFilter(InPlaceFilter):
     '''
-    Filter for computing the summed are tables on using a specific OpenCL context.
+    InPlaceFilter for computing the summed are tables on using a specific OpenCL context.
     '''
     printed = False
     def __init__(self, config, context = None):
@@ -55,7 +55,7 @@ class SummedAreaTableFilter(Filter):
         cl.enqueue_copy(queue, cell_copy, bufs.matrix, wait_for=[final_computed],is_blocking=True)
         np.copyto(cell,cell_copy)
 
-    @overrides(Filter)  
+    @overrides(InPlaceFilter)  
     def _allocate_buffers(self):
         config = self.config
         context = self.context
@@ -73,7 +73,7 @@ class SummedAreaTableFilter(Filter):
                          "group_row_sums":group_row_sums,
                          "y_group_sums":y_group_sums})
     
-    @overrides(Filter)    
+    @overrides(InPlaceFilter)    
     def _release_buffers(self,bufs):
         bufs.group_column_sums.release()
         bufs.group_row_sums.release()
@@ -81,9 +81,9 @@ class SummedAreaTableFilter(Filter):
         bufs.matrix.release()
         
 
-class SummedAreaTableFilterCPU(Filter):
+class SummedAreaTableFilterCPU(InPlaceFilter):
     '''
-    Filter for computing the summed are tables on the CPU, not using OpenCL.
+    InPlaceFilter for computing the summed are tables on the CPU, not using OpenCL.
     '''
     def __init__(self, config, context = None):
         super(SummedAreaTableFilterCPU,self).__init__(config,context)

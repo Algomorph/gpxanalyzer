@@ -10,7 +10,7 @@ import numpy as np
 import pyopencl as cl
 
 
-class Filter():
+class InPlaceFilter():
     '''
     A generic abstract image filter
     '''

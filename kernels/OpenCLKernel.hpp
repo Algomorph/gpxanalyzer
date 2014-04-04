@@ -934,10 +934,21 @@ float4 read_imagef(image2d_t image, int2 coord);
 float4 read_imagef(image2d_array_t image, int4 coord);
 float4 read_imagef(image2d_array_t image, sampler_t sampler, int4 coord);
 float4 read_imagef(image2d_array_t image, sampler_t sampler, float4 coord);
-
 float4 read_imagef(image3d_t image, sampler_t sampler, int4 coord);
 float4 read_imagef(image3d_t image, sampler_t sampler, float4 coord);
 float4 read_imagef(image3d_t image, int4 coord);
+
+int4 read_imagei(image2d_t image, sampler_t sampler, int2 coord);
+int4 read_imagei(image2d_t image, int2 coord);
+int4 read_imagei (image2d_array_t  image, sampler_t  sampler, int4 coord);
+
+uint4 read_imageui(image2d_t image, sampler_t sampler, int2 coord);
+uint4 read_imageui(image2d_t image, int2 coord);
+uint4 read_imageui (image2d_array_t  image, sampler_t  sampler, int4 coord);
+
+uint4 read_imageui(image3d_t image, sampler_t sampler, int4 coord);
+uint4 read_imageui(image3d_t image, sampler_t sampler, float4 coord);
+uint4 read_imageui(image3d_t image, int4 coord);
 
 void write_imagef(image1d_t image, int coord, float4 color);
 void write_imagef(image1d_buffer_t image, int coord, float4 color);
