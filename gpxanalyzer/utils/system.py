@@ -23,6 +23,9 @@ dev_type_by_name = {"gpu":cl.device_type.GPU,
                     "cpu":cl.device_type.CPU
                     }
 
+def find_max_image_2D_size(device):
+    pass
+
 def select_device(device_type, device_index):
     '''
     Select a device of the given type based on the given index
@@ -96,12 +99,18 @@ def determine_warp_size(device,context = None):
     '''
     #TODO: spruce up the test kernel somehow to yield better results for CPUs
     src = dm.load_string_from_file("kernels/test_kernel.cl")
+    del_context = False
     if(context is None):
         context = cl.Context(devices = [device])
+        del_context = True
     test_prog = cl.Program(context,src).build()
     test_kernel = test_prog.all_kernels()[0]
-
-    return test_kernel.get_work_group_info(cl.kernel_work_group_info.PREFERRED_WORK_GROUP_SIZE_MULTIPLE, device)
+    ws = test_kernel.get_work_group_info(cl.kernel_work_group_info.PREFERRED_WORK_GROUP_SIZE_MULTIPLE, device)
+    del test_prog
+    del test_kernel
+    if(del_context):
+        del context
+    return ws
 
 def get_devices_of_type(device_type):
     """
