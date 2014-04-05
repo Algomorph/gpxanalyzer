@@ -25,7 +25,7 @@ def get_image_info(file_path):
     """
     size = os.path.getsize(file_path)
 
-    with open(file_path) as input:
+    with open(file_path, "rb") as input:
         height = -1
         width = -1
         data = input.read(26)
@@ -82,7 +82,7 @@ def get_image_info(file_path):
                     else:
                         input.read(int(struct.unpack(">H", input.read(2))[0])-2)
                     b = input.read(1)
-                    
+
                 width = int(w)
                 height = int(h)
                 n_channels = int(d)
@@ -106,9 +106,9 @@ def get_image_info(file_path):
                 import warnings
                 warnings.warn("ICO File contains more than one image")
             #http://msdn.microsoft.com/en-us/library/ms997538.aspx
-            w = input.read(1) 
+            w = input.read(1)
             h = input.read(1)
-            d = input.read(1) 
+            d = input.read(1)
             width = ord(w)
             height = ord(h)
             n_channels = ord(d)
