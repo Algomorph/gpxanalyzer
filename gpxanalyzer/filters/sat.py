@@ -6,8 +6,8 @@ Created on Feb 24, 2014
 from filter import InPlaceFilter
 import numpy as np
 import pyopencl as cl
-import utils.data as dm
-from utils.oo import overrides
+import gpxanalyzer.utils.data as dm
+from gpxanalyzer.utils.oo import overrides
 
 
 class SummedAreaTableFilter(InPlaceFilter):
@@ -15,14 +15,14 @@ class SummedAreaTableFilter(InPlaceFilter):
     InPlaceFilter for computing the summed are tables on using a specific OpenCL context.
     '''
     printed = False
-    def __init__(self, config, context = None):
-        super(SummedAreaTableFilter,self).__init__(config,context)
+    def __init__(self, cl_manager, context = None):
+        super(SummedAreaTableFilter,self).__init__(cl_manager,context)
         #TODO: make sure kernel works correctly on Intel/AMD CPUs and AMD graphics cards
         sat_cl_source = dm.load_string_from_file("kernels/sat.cl")
-        self.program = cl.Program(context, sat_cl_source).build(options=str(config))
+        self.program = cl.Program(context, sat_cl_source).build(options=str(cl_manager))
         
     def _process_cell(self, cell, queue, bufs):
-        config = self.config
+        config = self.manager
         #upload table to device
         cell_copy = cell.copy()#have to copy to produce a contiguous array
         cl.enqueue_copy(queue, bufs.matrix, cell_copy, is_blocking=True)
@@ -57,7 +57,7 @@ class SummedAreaTableFilter(InPlaceFilter):
 
     @overrides(InPlaceFilter)  
     def _allocate_buffers(self):
-        config = self.config
+        config = self.manager
         context = self.context
         mem_flags = cl.mem_flags
         #allocate buffers
@@ -85,8 +85,8 @@ class SummedAreaTableFilterCPU(InPlaceFilter):
     '''
     InPlaceFilter for computing the summed are tables on the CPU, not using OpenCL.
     '''
-    def __init__(self, config, context = None):
-        super(SummedAreaTableFilterCPU,self).__init__(config,context)
+    def __init__(self, cl_manager, context = None):
+        super(SummedAreaTableFilterCPU,self).__init__(cl_manager,context)
         
     def _process_cell(self,cell,bufs,queue):
         #TODO: see whether it's necessary to allocate the extra array for output (in-place processing?)

@@ -51,8 +51,8 @@ class DbGenerator(QtCore.QThread):
      
 
 class ArrangeTilesDialog(QtGui.QDialog):
-    def __init__(self,config,parent = None):
-        self.config = config
+    def __init__(self,cl_manager,parent = None):
+        self.manager = cl_manager
         super(ArrangeTilesDialog, self).__init__(parent)
         self._err_color = QtCore.Qt.red
         self.initialize_components()
@@ -60,19 +60,19 @@ class ArrangeTilesDialog(QtGui.QDialog):
         self.add_components()
 ###############CONFIG SAVING FUNCTIONS############################
     def save_image_id(self):
-        self.config.tilearranger.image_id = self.image_id_spinbox.value()
+        self.manager.tilearranger.image_id = self.image_id_spinbox.value()
     def save_arrange_xyz(self):
-        self.config.tilearranger.resize = self.arrange_xyz_check_box.isChecked()
+        self.manager.tilearranger.resize = self.arrange_xyz_check_box.isChecked()
     def save_overflow_mode(self):
-        self.config.tilearranger.overflow_mode = self.overflow_mode_dropdown.currentText()
+        self.manager.tilearranger.overflow_mode = self.overflow_mode_dropdown.currentText()
     def save_data_source(self):
-        self.config.tilearranger.data_source = self.data_source_dropdown.currentText()
+        self.manager.tilearranger.data_source = self.data_source_dropdown.currentText()
     def save_input_directory(self):
-        self.config.tilearranger.input_folder = self.input_dir_line.text()
+        self.manager.tilearranger.input_folder = self.input_dir_line.text()
     def save_output_directory(self):
-        self.config.tilearranger.output_folder = self.output_dir_line.text()
+        self.manager.tilearranger.output_folder = self.output_dir_line.text()
     def save_db_filename(self):
-        self.config.tilearranger.db_filename = self.db_file_name_line.text()
+        self.manager.tilearranger.db_filename = self.db_file_name_line.text()
         
 ##################################################################
     def initialize_components(self):
@@ -193,7 +193,7 @@ when the output folder contains the entire image pyramid using the z/x/y structu
         '''
         Triggered by Browse.. button under source directory.
         Opens up a FileDialog allowing the user to choose a folder where the input tiles are located. 
-        Stores the result in the config as well as shows it in the GUI.
+        Stores the result in the manager as well as shows it in the GUI.
         '''
         dialog = QtGui.QFileDialog(self, caption="Specify Source...")
         dialog.setFileMode(QtGui.QFileDialog.Directory)
@@ -207,7 +207,7 @@ when the output folder contains the entire image pyramid using the z/x/y structu
         '''
         Triggered by Browse.. button under destination directory.
         Opens up a FileDialog allowing the user to choose a folder where the output tile pyramid is going
-        to be saved. Stores the result in the config as well as shows it in the GUI.
+        to be saved. Stores the result in the manager as well as shows it in the GUI.
         '''
         dialog = QtGui.QFileDialog(self, caption="Specify Destination...")
         dialog.setFileMode(QtGui.QFileDialog.Directory)
@@ -215,11 +215,11 @@ when the output folder contains the entire image pyramid using the z/x/y structu
         dialog.exec_()
         if(len(dialog.selectedFiles()) > 0):
             path = dialog.selectedFiles()[0]
-            self.config.tilecombiner.output_folder = path
+            self.manager.tilecombiner.output_folder = path
             self.output_dir_line.setText(path)
     
     def load_config(self):
-        config = self.config.tilearranger
+        config = self.manager.tilearranger
         if(os.path.exists(config.output_folder)):
             self.output_dir_line.setText(config.output_folder)
         if(os.path.exists(config.input_folder)):

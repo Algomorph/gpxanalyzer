@@ -56,8 +56,8 @@ class Pow2SpinBox(QtGui.QSpinBox):
 
 class CombineTilesDialog(QtGui.QDialog):
     stop_requested = QtCore.Signal()
-    def __init__(self, config, parent = None):
-        self.config = config
+    def __init__(self, cl_manager, parent = None):
+        self.manager = cl_manager
         super(CombineTilesDialog, self).__init__(parent)
         self._err_color = QtCore.Qt.red
         self.initialize_components()
@@ -65,7 +65,7 @@ class CombineTilesDialog(QtGui.QDialog):
         self.add_components()
         
     def load_config(self):
-        config = self.config.tilecombiner
+        config = self.manager.tilecombiner
         if(os.path.exists(config.output_folder)):
             self.output_dir_line.setText(config.output_folder)
         if(os.path.exists(config.input_folder)):
@@ -80,23 +80,23 @@ class CombineTilesDialog(QtGui.QDialog):
         
 ###############CONFIG SAVING FUNCTIONS############################
     def save_image_id(self):
-        self.config.tilecombiner.image_id = self.image_id_spinbox.value()
+        self.manager.tilecombiner.image_id = self.image_id_spinbox.value()
     def save_resize(self):
-        self.config.tilecombiner.resize = self.resize_check_box.isChecked()
+        self.manager.tilecombiner.resize = self.resize_check_box.isChecked()
     def save_verify(self):
-        self.config.tilecombiner.resize = self.verify_check_box.isChecked()
+        self.manager.tilecombiner.resize = self.verify_check_box.isChecked()
     def save_overflow_mode(self):
-        self.config.tilecombiner.overflow_mode = self.overflow_mode_dropdown.currentText()
+        self.manager.tilecombiner.overflow_mode = self.overflow_mode_dropdown.currentText()
     def save_data_source(self):
-        self.config.tilecombiner.data_source = self.data_source_dropdown.currentText()
+        self.manager.tilecombiner.data_source = self.data_source_dropdown.currentText()
     def save_size(self):
-        self.config.tilecombiner.size = self.comb_size_spinbox.value()
+        self.manager.tilecombiner.size = self.comb_size_spinbox.value()
     def save_resize_size(self):
-        self.config.tilecombiner.resize_size = self.resize_size_spinbox.value()
+        self.manager.tilecombiner.resize_size = self.resize_size_spinbox.value()
     def save_input_directory(self):
-        self.config.tilecombiner.input_folder = self.input_dir_line.text()
+        self.manager.tilecombiner.input_folder = self.input_dir_line.text()
     def save_output_directory(self):
-        self.config.tilecombiner.output_folder = self.output_dir_line.text()
+        self.manager.tilecombiner.output_folder = self.output_dir_line.text()
         
 ##################################################################
     def initialize_components(self):
@@ -287,7 +287,7 @@ class CombineTilesDialog(QtGui.QDialog):
         '''
         Triggered by Browse.. button under source directory.
         Opens up a FileDialog allowing the user to choose a folder where the input tiles are located. 
-        Stores the result in the config as well as shows it in the GUI.
+        Stores the result in the manager as well as shows it in the GUI.
         '''
         dialog = QtGui.QFileDialog(self, caption="Specify Source...")
         dialog.setFileMode(QtGui.QFileDialog.Directory)
@@ -301,7 +301,7 @@ class CombineTilesDialog(QtGui.QDialog):
         '''
         Triggered by Browse.. button under destination directory.
         Opens up a FileDialog allowing the user to choose a folder where the output tiles are going
-        to be saved. Stores the result in the config as well as shows it in the GUI.
+        to be saved. Stores the result in the manager as well as shows it in the GUI.
         '''
         dialog = QtGui.QFileDialog(self, caption="Specify Destination...")
         dialog.setFileMode(QtGui.QFileDialog.Directory)
@@ -309,5 +309,5 @@ class CombineTilesDialog(QtGui.QDialog):
         dialog.exec_()
         if(len(dialog.selectedFiles()) > 0):
             path = dialog.selectedFiles()[0]
-            self.config.tilecombiner.output_folder = path
+            self.manager.tilecombiner.output_folder = path
             self.output_dir_line.setText(path)

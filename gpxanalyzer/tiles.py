@@ -26,10 +26,10 @@ def PIL_to_QImage(pil_img):
     return ImageQt.ImageQt(pil_img)
 
 class QTiledLayerViewer(QtGui.QWidget):
-    def __init__(self, config, first_layer = None):
+    def __init__(self, cl_manager, first_layer = None):
         super(QTiledLayerViewer,self).__init__()
-        self.config = config
-        self.max_cache_size = config.system.max_tile_cache_mem
+        self.manager = cl_manager
+        self.max_cache_size = cl_manager.system.max_tile_cache_mem
         if(first_layer != None):
             self.layers = [first_layer]
             self.full_tile_size= first_layer.tile_size

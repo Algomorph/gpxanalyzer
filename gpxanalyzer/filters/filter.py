@@ -16,10 +16,10 @@ class InPlaceFilter():
     '''
     __metaclass__ = abc.ABCMeta
     
-    def __init__(self, config, context = None):
-        self.config = config
+    def __init__(self, cl_manager, context = None):
+        self.manager = cl_manager
         self.context = context
-        if(config.n_channels > 1):
+        if(cl_manager.n_channels > 1):
             self._process = self._process_multi_channel
         else:
             self._process = self._process_single_channel
@@ -35,7 +35,7 @@ class InPlaceFilter():
         """
         Applies filter to all cells within the channel in-place.
         """
-        (cell_height,cell_width) = (self.config.cell_shape)
+        (cell_height,cell_width) = (self.manager.cell_shape)
         #traverse cell rows
         for y in xrange(0,channel.shape[0],cell_height):
                 y_end = y+cell_height
@@ -61,15 +61,15 @@ class InPlaceFilter():
         Applies filter to a multi-channel tile.
         Does not modify the original tile.
         """
-        summed_channels = []
+        result_channels = []
         for i_channel in xrange(tile.shape[2]):
             #copy channel from uint8 to uint32
             channel = tile[:,:,i_channel].astype(np.uint32)
             self._process_channel(channel, queue, bufs)
             #aggregate summed channels in a single list
-            summed_channels.append(channel)
-        summed_area_tables = np.dstack(summed_channels)
-        return summed_area_tables
+            result_channels.append(channel)
+        result_raster = np.dstack(result_channels)
+        return result_raster
     
     def _allocate_buffers(self):
         return None

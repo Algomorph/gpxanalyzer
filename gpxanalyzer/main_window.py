@@ -15,9 +15,9 @@ import config as cfg
 
 
 class GigapixelAnalyzer(QtGui.QMainWindow):
-    def __init__(self, config, startup_dir):
+    def __init__(self, cl_manager, startup_dir):
         super(GigapixelAnalyzer, self).__init__()
-        self.config = config
+        self.manager = cl_manager
         self.startup_dir = startup_dir
         self.init_gui()
 
@@ -30,10 +30,10 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         #startup = "/mnt/sdb2/Data/mbtiles/immunogold-colored/255_reduced.mbtiles"
         #startup = "/media/algomorph/Data/mbtiles/king_penguins_8192/db.sqlite"
         #startup = "/media/algomorph/Data/mbtiles/king_penguins/db.sqlite"
-        if (hasattr(self.config.system, "startup_file_path") and os.path.exists(self.config.system.startup_file_path)):
-            self.image_area = tiles.QTiledLayerViewer(self.config,tiles.TileLayer(self.config.system.startup_file_path))
+        if (hasattr(self.manager.system, "startup_file_path") and os.path.exists(self.manager.system.startup_file_path)):
+            self.image_area = tiles.QTiledLayerViewer(self.manager,tiles.TileLayer(self.manager.system.startup_file_path))
         else:
-            self.image_area = tiles.QTiledLayerViewer(self.config)
+            self.image_area = tiles.QTiledLayerViewer(self.manager)
             
         self.image_area.setBackgroundRole(QtGui.QPalette.Base)
         self.image_area.setSizePolicy(QtGui.QSizePolicy.Ignored,QtGui.QSizePolicy.Ignored)
@@ -49,7 +49,7 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         #self.showMaximized()
         
     def save_config(self):
-        cfg.save_config(self.startup_dir, self.config, True)
+        cfg.save_config(self.startup_dir, self.manager, True)
 
     def closeEvent(self,event):
         self.save_config()
@@ -65,12 +65,12 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
     #TODO figure out a way (Tabs, perhaps, or QThreads?) to 
     #get multiple tools AND the main interface usable at the same time.
     def open_tile_combiner(self):
-        dialog = CombineTilesDialog(self.config,self)
+        dialog = CombineTilesDialog(self.manager,self)
         dialog.resize(1024,600)
         dialog.exec_()
         
     def open_tile_arranger(self):
-        dialog = ArrangeTilesDialog(self.config,self)
+        dialog = ArrangeTilesDialog(self.manager,self)
         dialog.resize(1024,400)
         dialog.exec_()
 
@@ -106,8 +106,8 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         dialog = SetStartupDialog(layer_paths,self)
         retval = dialog.exec_()
         path = layer_paths[retval]
-        self.config.system.startup_file_path = path
-        cfg.save_config(self.startup_dir, self.config, True)
+        self.manager.system.startup_file_path = path
+        cfg.save_config(self.startup_dir, self.manager, True)
          
 
     def create_menus(self):
