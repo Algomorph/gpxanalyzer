@@ -17,6 +17,12 @@
  */
 #ifdef __CDT_PARSER__
 #include "OpenCLKernel.hpp"
+#define BASE_QUANT_SPACE 256
+#define GROUP_SIZE 1
+#define WIDTH 2048
+#define HEIGHT 2048
+#define SUBSAMPLE 3
+#define WINSIZE 64
 #endif
 
 __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE
@@ -28,7 +34,7 @@ void convert_to_HMMD(__read_only image2d_t image,
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
 	int2 dims = get_image_dim(image);
-	if (x > dims.x || y > dims.y) {
+	if (x >= dims.x || y >= dims.y) {
 		return;
 	}
 	int2 coord = (int2) (x, y);
@@ -107,6 +113,76 @@ void convert_to_HMMD(__read_only image2d_t image,
 	out.z = (int) d;						//range [0,255]
 	write_imagei(output, coord, out);
 }
+
+__kernel
+void window_hist_primitive(__read_only image2d_t input, __global uint* descriptor){
+	size_t x = get_global_id(0) * SUBSAMPLE;
+	size_t y = get_global_id(1) * SUBSAMPLE;
+	int2 dims = get_image_dim(input);
+	if (x + WINSIZE > dims.x|| y + WINSIZE > dims.y) {
+		return;
+	}
+	uint hist[BASE_QUANT_SPACE] = {0};
+	size_t stop_x = x + WINSIZE;
+	size_t stop_y = y + WINSIZE;
+	for(size_t loc_x = x; loc_x < stop_x; loc_x+=SUBSAMPLE){
+		for(size_t loc_y = y; loc_y < stop_y; loc_y+=SUBSAMPLE){
+			int2 coord = (int2) (loc_x, loc_y);
+			hist[read_imagei(input,sampler,coord).x] ++;
+		}
+	}
+	for(int pos = 0; pos < BASE_QUANT_SPACE; pos++){
+		descriptor[pos] += hist[pos] > 0;
+	}
+}
+
+__kernel
+void window_hist(__read_only image2d_t input, __global uint* descriptor,__local uint* slideHistGroup){
+	//size_t row = get_global_id(1);
+	size_t x_window = get_global_id(0) * SUBSAMPLE;
+	//size_t group_row = get_group_id(1);
+	size_t colWithinGroup = get_local_id(0);
+	int2 dims = get_image_dim(input);
+	if (x_window > dims.x) {
+		return;
+	}
+	__local uint* slideHist = slideHistGroup + colWithinGroup*BASE_QUANT_SPACE;
+	size_t y, x, stop_at, add_y, del_y;
+	int2 add_coord, del_coord;
+	stop_at = x_window + WINSIZE;
+
+	//fill in the first (top of image) full sliding window histograms
+	for( y = 0; y < WINSIZE; y += SUBSAMPLE ){
+		for(x = x_window; x < stop_at; x++){
+			add_coord = (int2) (x,y);
+			slideHist[read_imagei(input,sampler,add_coord).x] ++;
+		}
+	}
+
+	// update histogram from first sliding window histograms
+	for (int index = 0; index < BASE_QUANT_SPACE; index ++){
+		descriptor[index] += slideHist[index] > 0;
+	}
+
+	// slide the window down the rest of the rows
+	for(; y < HEIGHT; y += SUBSAMPLE )
+	{
+		for(x = x_window; x < stop_at; x++){
+			del_y = y - SUBSAMPLE;
+			add_y = y + WINSIZE - SUBSAMPLE;
+			del_coord = (int2) (x,del_y);
+			add_coord = (int2) (x,add_y);
+			slideHist[read_imagei(input,sampler,add_coord).x] ++;
+			slideHist[read_imagei(input,sampler,del_coord).x] --;
+		}
+
+		// update histogram from sliding window histogram
+		for (int index = 0; index < BASE_QUANT_SPACE; index ++){
+			descriptor[index] += slideHist[index] > 0;
+		}
+	}
+}
+
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,
 __constant short* diffThresh, __constant int* nHueLevels,
@@ -115,7 +191,7 @@ __constant short* diffThresh, __constant int* nHueLevels,
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
 	int2 dims = get_image_dim(input);
-	if (x > dims.x || y > dims.y) {
+	if (x >= dims.x || y >= dims.y) {
 		return;
 	}
 	int2 coord = (int2) (x, y);
@@ -128,21 +204,25 @@ __constant short* diffThresh, __constant int* nHueLevels,
 
 	// Quantize the Difference component, find the Subspace
 	int iSub = 0;
-	while (diffThresh[quant_index][iSub + 1] <= D)
-		iSub++;
+	int ix = quant_index * 5 + iSub;
+	//TODO: optimize
+	while (diffThresh[ix + 1] <= D)
+		ix++;
+
 
 	// Quantize the Hue component
-	int Hindex = (int) ((H / 360.0f) * nHueLevels[quant_index][iSub]);
+	int Hindex = (int) ((H / 360.0f) * nHueLevels[ix]);
+	//TODO: swap 0 and 360 in HMMD conversion
 	if (H == 360)
 		Hindex = 0;
 
 	// Quantize the Sum component
 	// The min value of Sum in a subspace is 0.5*diffThresh (see HMMD slice)
-	int Sindex = (int)((S - 0.5f * diffThresh[quant_index][iSub])
-						* nSumLevels[quant_index][iSub]
-					    / (255 - diffThresh[quant_index][iSub]));
-	if (Sindex >= nSumLevels[quant_index][iSub])
-		Sindex = nSumLevels[quant_index][iSub] - 1;
+	int Sindex = (int)(((float)S - 0.5f * diffThresh[ix])
+						* nSumLevels[ix]
+					    / (255.0f - diffThresh[ix]));
+	if (Sindex >= nSumLevels[ix])
+		Sindex = nSumLevels[ix] - 1;
 
 	/* The following quantization of Sum is more uniform and doesn't require the bounds check
 	 int Sindex = (int)floor((S - 0.5*diffThresh[quant_index][iSub])
@@ -150,6 +230,6 @@ __constant short* diffThresh, __constant int* nHueLevels,
 	 / (256 - diffThresh[quant_index][iSub]));
 	 */
 
-	int result = nCumLevels[quant_index][iSub] + Hindex * nSumLevels[quant_index][iSub] + Sindex;
+	int result = nCumLevels[ix] + Hindex * nSumLevels[ix] + Sindex;
 	write_imagei(output,coord,result);
 }
