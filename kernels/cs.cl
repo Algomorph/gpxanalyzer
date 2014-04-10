@@ -115,13 +115,15 @@ void convert_to_HMMD(__read_only image2d_t image,
 }
 
 __kernel
-void window_hist_primitive(__read_only image2d_t input, __global uint* descriptor){
-	size_t x = get_global_id(0) * SUBSAMPLE;
-	size_t y = get_global_id(1) * SUBSAMPLE;
-	int2 dims = get_image_dim(input);
-	if (x + WINSIZE > dims.x|| y + WINSIZE > dims.y) {
+void window_hist_cumo(__read_only image2d_t input, __global uint* descriptor){
+	size_t x_thread = get_global_id(0);
+	size_t y_thread = get_global_id(1);
+	size_t x = x_thread * SUBSAMPLE;
+	size_t y = y_thread * SUBSAMPLE;
+	if (x >= WIDTH|| y >= HEIGHT) {
 		return;
 	}
+	__global uint *descrRow = descriptor + (y_thread*249+x_thread)*BASE_QUANT_SPACE;
 	uint hist[BASE_QUANT_SPACE] = {0};
 	size_t stop_x = x + WINSIZE;
 	size_t stop_y = y + WINSIZE;
@@ -132,21 +134,26 @@ void window_hist_primitive(__read_only image2d_t input, __global uint* descripto
 		}
 	}
 	for(int pos = 0; pos < BASE_QUANT_SPACE; pos++){
-		descriptor[pos] += hist[pos] > 0;
+		descrRow[pos] += hist[pos] > 0;
 	}
 }
 
 __kernel
-void window_hist(__read_only image2d_t input, __global uint* descriptor,__local uint* slideHistGroup){
+void window_hist_p(__read_only image2d_t input, __global uint* descriptor){
 	//size_t row = get_global_id(1);
-	size_t x_window = get_global_id(0) * SUBSAMPLE;
+	size_t x_thread = get_global_id(0);
+	size_t x_window = x_thread * SUBSAMPLE;
 	//size_t group_row = get_group_id(1);
 	size_t colWithinGroup = get_local_id(0);
-	int2 dims = get_image_dim(input);
-	if (x_window > dims.x) {
+	if(x_window >= WIDTH){
 		return;
 	}
-	__local uint* slideHist = slideHistGroup + colWithinGroup*BASE_QUANT_SPACE;
+	__global uint *descrRow = descriptor + x_thread*BASE_QUANT_SPACE;
+	uint slideHist[BASE_QUANT_SPACE];
+
+	for(int ix = 0; ix < BASE_QUANT_SPACE; ix++){
+		slideHist[ix] = 0;
+	}
 	size_t y, x, stop_at, add_y, del_y;
 	int2 add_coord, del_coord;
 	stop_at = x_window + WINSIZE;
@@ -161,11 +168,11 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor,__local 
 
 	// update histogram from first sliding window histograms
 	for (int index = 0; index < BASE_QUANT_SPACE; index ++){
-		descriptor[index] += slideHist[index] > 0;
+		descrRow[index] += slideHist[index] > 0;
 	}
 
 	// slide the window down the rest of the rows
-	for(; y < HEIGHT; y += SUBSAMPLE )
+	for(y = SUBSAMPLE; y < HEIGHT; y += SUBSAMPLE )
 	{
 		for(x = x_window; x < stop_at; x++){
 			del_y = y - SUBSAMPLE;
@@ -178,7 +185,64 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor,__local 
 
 		// update histogram from sliding window histogram
 		for (int index = 0; index < BASE_QUANT_SPACE; index ++){
-			descriptor[index] += slideHist[index] > 0;
+			descrRow[index] += slideHist[index] > 0;
+		}
+	}
+}
+
+__kernel
+void window_hist(__read_only image2d_t input, __global uint* descriptor){
+	//size_t row = get_global_id(1);
+	size_t x_thread = get_global_id(0);
+	size_t x_window = x_thread * SUBSAMPLE;
+	//size_t group_row = get_group_id(1);
+	size_t colWithinGroup = get_local_id(0);
+	int2 dims = get_image_dim(input);
+	if(x_window >= WIDTH){
+			return;
+	}
+	__local uint slideHistGroup[GROUP_SIZE][BASE_QUANT_SPACE];
+
+	//__local uint descrGroup[GROUP_SIZE][BASE_QUANT_SPACE];
+//	__local uint *slideHist = (__local uint *) slideHistGroup[colWithinGroup];
+	__local uint *slideHist = ((__local uint *) slideHistGroup) + colWithinGroup*BASE_QUANT_SPACE;
+	__global uint *descrRow = descriptor + x_thread*BASE_QUANT_SPACE;
+	//uint slideHist[BASE_QUANT_SPACE];
+	for(int ix = 0; ix < BASE_QUANT_SPACE; ix++){
+		slideHist[ix] = 0;
+	}
+	size_t y, x, stop_at, add_y, del_y;
+	int2 add_coord, del_coord;
+	stop_at = x_window + WINSIZE;
+
+	//fill in the first (top of image) full sliding window histograms
+	for( y = 0; y < WINSIZE; y += SUBSAMPLE ){
+		for(x = x_window; x < stop_at; x++){
+			add_coord = (int2) (x,y);
+			slideHist[read_imagei(input,sampler,add_coord).x] ++;
+		}
+	}
+
+	// update histogram from first sliding window histograms
+	for (int index = 0; index < BASE_QUANT_SPACE; index ++){
+		descrRow[index] += slideHist[index] > 0;
+	}
+
+	// slide the window down the rest of the rows
+	for(y = SUBSAMPLE; y < HEIGHT; y += SUBSAMPLE )
+	{
+		for(x = x_window; x < stop_at; x++){
+			del_y = y - SUBSAMPLE;
+			add_y = y + WINSIZE - SUBSAMPLE;
+			del_coord = (int2) (x,del_y);
+			add_coord = (int2) (x,add_y);
+			slideHist[read_imagei(input,sampler,add_coord).x] ++;
+			slideHist[read_imagei(input,sampler,del_coord).x] --;
+		}
+
+		// update histogram from sliding window histogram
+		for (int index = 0; index < BASE_QUANT_SPACE; index ++){
+			descrRow[index] += slideHist[index] > 0;
 		}
 	}
 }
