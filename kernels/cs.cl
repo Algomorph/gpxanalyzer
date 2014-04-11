@@ -83,7 +83,6 @@ void convert_to_HMMD(__read_only image2d_t image,
 				a = R + G;
 				d = R - G;
 				hue = (((float) (G - B)) / d);
-
 			}
 			hue *= 60;
 			if (hue < 0.0f) {
@@ -249,8 +248,8 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor){
 
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,
-__constant short* diffThresh, __constant int* nHueLevels,
-		__constant int* nSumLevels, __constant int* nCumLevels,
+__constant short* diffThresh, __constant uchar* nHueLevels,
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels,
 		int quant_index) {
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
@@ -269,22 +268,23 @@ __constant short* diffThresh, __constant int* nHueLevels,
 	// Quantize the Difference component, find the Subspace
 	int iSub = 0;
 	int ix = quant_index * 5 + iSub;
+	int ixd = quant_index * 6 + iSub;
 	//TODO: optimize
-	while (diffThresh[ix + 1] <= D)
-		ix++;
+	while (diffThresh[ixd + 1] <= D)
+		ixd++;
 
 
 	// Quantize the Hue component
 	int Hindex = (int) ((H / 360.0f) * nHueLevels[ix]);
-	//TODO: swap 0 and 360 in HMMD conversion
+	//TODO: swap 0 and 360 in HMMD conversion or just subtract 1 instead of doing the check
 	if (H == 360)
 		Hindex = 0;
 
 	// Quantize the Sum component
 	// The min value of Sum in a subspace is 0.5*diffThresh (see HMMD slice)
-	int Sindex = (int)(((float)S - 0.5f * diffThresh[ix])
+	int Sindex = (int)(((float)S - 0.5f * diffThresh[ixd])
 						* nSumLevels[ix]
-					    / (255.0f - diffThresh[ix]));
+					    / (255.0f - diffThresh[ixd]));
 	if (Sindex >= nSumLevels[ix])
 		Sindex = nSumLevels[ix] - 1;
 

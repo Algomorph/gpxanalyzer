@@ -30,8 +30,8 @@ n_sum_levels = np.array([
     [8, 4, 4, 2, 1],
     [16, 4, 4, 4, 4],
     [32, 8, 4, 4, 4]], dtype=np.uint8)
-n_cum_levels = np.array(
-    [[24, 8, 4, 0, 0],
+n_cum_levels = np.array([
+    [24, 8, 4, 0, 0],
     [56, 40, 24, 8, 0],
     [112, 96, 64, 32, 0],
     [224, 192, 128, 64, 0]], dtype=np.uint8)
@@ -73,36 +73,29 @@ def hist_bin(raster):
                     descr[ix] +=1
     return descr
 
-    
-def to_hmmd_cl(raster, context, queue):
-    in_img = None
-    output = None
-    try:
-        shape_2d = (raster.shape[0], raster.shape[1])
-        cs_cl_source = load_string_from_file("kernels/cs.cl")
-        program = cl.Program(context, cs_cl_source).build()
-        convert_to_HMMD = cl.Kernel(program, "convert_to_HMMD")
-        in_img = cl.Image(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                         cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.UNSIGNED_INT8),
-                         shape_2d, hostbuf=raster)
-        output = cl.Image(context, cl.mem_flags.WRITE_ONLY,
-                          cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.SIGNED_INT16), shape_2d)
-        evt = convert_to_HMMD(queue, shape_2d, (32, 4), in_img, output)
-        res = np.zeros(raster.shape, dtype=np.uint16)
-        queue.flush()
-        nanny_evt = cl.enqueue_copy(queue, res, output, wait_for=[evt], origin=(0, 0), region=shape_2d)
-        nanny_evt.wait()
-    except MemoryError as me:
-        if(in_img):
-            in_img.release()
-        if(output):
-            output.release()
-        raise me;
-    
-    in_img.release()
-    output.release()
-    
-    return res
+def quantizeHMMD(raster):
+    out = np.zeros((raster.shape[0],raster.shape[1]), dtype = np.uint8)
+    N = 3
+    for y in xrange(raster.shape[0]):
+        for x in xrange(raster.shape[1]):
+            (H,S,D) = raster[y,x]
+            iSub = 0
+            while(difference_thresholds[N,iSub + 1] <= D):
+                iSub +=1
+        
+            Hindex = int((H / 360.0) * n_hue_levels[N,iSub]);
+            if (H == 360):
+                Hindex = 0
+        
+            Sindex = int(math.floor((S - 0.5*difference_thresholds[N,iSub])
+                                    * n_sum_levels[N,iSub]
+                                    / (255 - difference_thresholds[N,iSub])))
+            if Sindex >= n_sum_levels[N,iSub]:
+                Sindex   = n_sum_levels[N,iSub] - 1
+        
+            px = n_cum_levels[N,iSub] + Hindex*n_sum_levels[N,iSub] + Sindex
+            out[y,x] = px
+    return out
 
 class ColorStructureDescriptorExtractor:
     COMPILE_STRING = "-D WIDTH={0:d} -D HEIGHT={1:d} -D SUBSAMPLE={2:d} -D WINSIZE={3:d}"+\
@@ -140,14 +133,7 @@ class ColorStructureDescriptorExtractor:
         self.hmmd_group_dims = (32, 4)
         self.hist_global_dims =(mgr.cell_width / subsample,)
         self.hist_group_dims = (self.wg_size,)
-        self.diff_thresh_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf=difference_thresholds)
-        self.hue_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf=n_hue_levels)
-        self.sum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf= n_sum_levels)
-        self.cum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf= n_cum_levels)
+        
         self.buffers_allocated = False
         
     def recompile(self):
@@ -166,6 +152,14 @@ class ColorStructureDescriptorExtractor:
             self.quant_buffer = cl.Image(cl_manager.context, cl.mem_flags.READ_WRITE,
                                          cl.ImageFormat(cl.channel_order.A, cl.channel_type.UNSIGNED_INT8),
                                          cl_manager.cell_shape)
+            self.diff_thresh_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                          hostbuf=difference_thresholds)
+            self.hue_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                          hostbuf=n_hue_levels)
+            self.sum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                          hostbuf= n_sum_levels)
+            self.cum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                          hostbuf= n_cum_levels)
             self.buffers_allocated = True
     
     def release(self):
