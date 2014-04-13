@@ -108,9 +108,10 @@ class ColorStructureDescriptorExtractor:
         winsize = 8 * subsample
         return winsize,subsample
     
-    def __init__(self, cl_manager):
+    def __init__(self, cl_manager, quant_index = 3):
         self.manager = cl_manager
         self.wg_size = 8
+        self.quant_index = 3;
         
         cs_cl_source = load_string_from_file("kernels/cs.cl")
         
@@ -152,14 +153,15 @@ class ColorStructureDescriptorExtractor:
             self.quant_buffer = cl.Image(cl_manager.context, cl.mem_flags.READ_WRITE,
                                          cl.ImageFormat(cl.channel_order.A, cl.channel_type.UNSIGNED_INT8),
                                          cl_manager.cell_shape)
+            idx = self.quant_index
             self.diff_thresh_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf=difference_thresholds)
+                                          hostbuf=difference_thresholds[idx])
             self.hue_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf=n_hue_levels)
+                                          hostbuf=n_hue_levels[idx])
             self.sum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf= n_sum_levels)
+                                          hostbuf= n_sum_levels[idx])
             self.cum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf= n_cum_levels)
+                                          hostbuf= n_cum_levels[idx])
             self.buffers_allocated = True
     
     def release(self):

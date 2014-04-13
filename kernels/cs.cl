@@ -249,8 +249,7 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor){
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,
 __constant short* diffThresh, __constant uchar* nHueLevels,
-		__constant uchar* nSumLevels, __constant uchar* nCumLevels,
-		int quant_index) {
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels) {
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
 	int2 dims = get_image_dim(input);
@@ -267,26 +266,28 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 
 	// Quantize the Difference component, find the Subspace
 	int iSub = 0;
-	int ix = quant_index * 5 + iSub;
-	int ixd = quant_index * 6 + iSub;
 	//TODO: optimize
-	while (diffThresh[ixd + 1] <= D)
-		ixd++;
+	while (diffThresh[iSub + 1] <= D)
+		iSub++;
+	//write_imageui(output,coord,D);
 
 
 	// Quantize the Hue component
-	int Hindex = (int) ((H / 360.0f) * nHueLevels[ix]);
+	int Hindex = (int) ((H / 360.0f) * nHueLevels[iSub]);
 	//TODO: swap 0 and 360 in HMMD conversion or just subtract 1 instead of doing the check
 	if (H == 360)
 		Hindex = 0;
 
+	short curDiffThresh = diffThresh[iSub];
+	uchar curSumLevel = nSumLevels[iSub];
+
 	// Quantize the Sum component
 	// The min value of Sum in a subspace is 0.5*diffThresh (see HMMD slice)
-	int Sindex = (int)(((float)S - 0.5f * diffThresh[ixd])
-						* nSumLevels[ix]
-					    / (255.0f - diffThresh[ixd]));
-	if (Sindex >= nSumLevels[ix])
-		Sindex = nSumLevels[ix] - 1;
+	int Sindex = (int)(((float)S - 0.5f * curDiffThresh)
+						* curSumLevel
+					    / (255.0f - curDiffThresh));
+	if (Sindex >= curSumLevel)
+		Sindex = curSumLevel - 1;
 
 	/* The following quantization of Sum is more uniform and doesn't require the bounds check
 	 int Sindex = (int)floor((S - 0.5*diffThresh[quant_index][iSub])
@@ -294,6 +295,6 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	 / (256 - diffThresh[quant_index][iSub]));
 	 */
 
-	int result = nCumLevels[ix] + Hindex * nSumLevels[ix] + Sindex;
-	write_imagei(output,coord,result);
+	int result = nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
+	write_imageui(output,coord,result);
 }
