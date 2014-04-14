@@ -16,22 +16,21 @@ class InPlaceFilter():
     '''
     __metaclass__ = abc.ABCMeta
     
-    def __init__(self, cl_manager, context = None):
+    def __init__(self, cl_manager):
         self.manager = cl_manager
-        self.context = context
         if(cl_manager.n_channels > 1):
             self._process = self._process_multi_channel
         else:
             self._process = self._process_single_channel
         
     @abstractmethod    
-    def _process_cell(self,cell, queue, bufs):
+    def _process_cell(self, cell, bufs):
         """
         Applies filter to a single cell.
         """
         pass
     
-    def _process_channel(self,channel,queue,bufs):
+    def _process_channel(self,channel,bufs):
         """
         Applies filter to all cells within the channel in-place.
         """
@@ -45,18 +44,18 @@ class InPlaceFilter():
                     #slice of the tile channel
                     cell = channel[y:y_end,x:x_end]
                     #process cell in-place
-                    self._process_cell(cell, queue, bufs)
+                    self._process_cell(cell, bufs)
     
-    def _process_single_channel(self, tile, bufs, queue):
+    def _process_single_channel(self, tile, bufs):
         """
         Applies filter to a single-channel tile.
         Does not modify the original tile.
         """
         channel = tile.astype(np.uint32)
-        self._process_channel(channel, queue, bufs)
+        self._process_channel(channel, bufs)
         return channel
 
-    def _process_multi_channel(self, tile, bufs, queue):
+    def _process_multi_channel(self, tile, bufs):
         """
         Applies filter to a multi-channel tile.
         Does not modify the original tile.
@@ -65,7 +64,7 @@ class InPlaceFilter():
         for i_channel in xrange(tile.shape[2]):
             #copy channel from uint8 to uint32
             channel = tile[:,:,i_channel].astype(np.uint32)
-            self._process_channel(channel, queue, bufs)
+            self._process_channel(channel, bufs)
             #aggregate summed channels in a single list
             result_channels.append(channel)
         result_raster = np.dstack(result_channels)
@@ -78,7 +77,7 @@ class InPlaceFilter():
         pass
 
     
-    def __call__(self, tile, queue = None):
+    def __call__(self, tile):
         '''
         Applies the filter to each cell within the the given tile.
         Does not modify the original tile.
@@ -87,12 +86,7 @@ class InPlaceFilter():
         @return summed-area tables for cells of the whole tile, in the shape of the original tile and dtype np.uint32 
         '''
         bufs = self._allocate_buffers()
-        
-        #create a queue if one is needed
-        if(queue is None and self.context is not None):
-            queue = cl.CommandQueue(self.context)
-        
-        summed_area_tables = self._process(tile,bufs,queue)
+        summed_area_tables = self._process(tile,bufs)
         
         #release buffers
         self._release_buffers(bufs)

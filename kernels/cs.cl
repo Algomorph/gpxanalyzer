@@ -28,6 +28,116 @@
 __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE
 		| CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 
+/**
+ * Old routine for conversion from RGB to HMMD space - inefficient
+ * @param R
+ * @param G
+ * @param B
+ * @return
+ */
+int4 convertPixelToHMMD2(int R, int G, int B){
+	int max, min;
+	float hue;
+
+	max=R;
+	if(max<G) {max=G;}
+	if(max<B) {max=B;}
+
+	min=R;
+	if(min>G) {min=G;}
+	if(min>B) {min=B;}
+
+	if (max == min) // ( R == G == B )//exactly gray
+		hue = -1; //hue is undefined
+
+	else
+	{   //solve Hue
+		if(R==max)
+			hue=((G-B)*60.0f/(float)(max-min));
+
+		else if(G==max)
+			hue=(120.0f +(B-R)*60.0f/(float)(max-min));
+
+		else if(B==max)
+			hue=(240.0f +(R-G)*60.0f/(float)(max-min));
+
+		//hue*=60.0f;
+		if(hue<0.0f) hue+=360.0f;
+	}
+	return (int4)((int) (hue + 0.5f),(int)(max + min + 1) >> 1,(int)(max - min + 0.5),0);
+}
+
+/**
+ * Fast routine for converting RGB pixels to HMMD colors space
+ * @param R
+ * @param G
+ * @param B
+ * @return (int4) (hue,sum,difference,0)
+ */
+int4 convertPixelToHMMD(int R, int G, int B){
+	float hue;
+	int a, D;
+
+	if (R < G) {
+		if (G < B) {
+			//B is max,R is min
+			a = B + R;
+			D = B - R;
+			hue = 240.0f + ((float) (R - G))*60.0f / D;
+		} else {
+			//G is max or G == B
+			if (R < B) {
+				//R is min
+				a = G + R;
+				D = G - R;
+				hue = 120.0f + ((float) (B - R))*60.0f / D;
+			} else {
+				//B is min or R == B
+				a = G + B;
+				D = G - B;
+				hue = 120.0f + ((float) (B - R))*60.0f / D;
+			}
+		}
+		if (hue < 0.0f) {
+			hue += 360.0f;
+		}
+	} else {
+		if (B < R) {
+			//R is max or R == G
+			if (B < G) {
+				//B is min
+				a = R + B;
+				D = R - B;
+				hue = (((float) (G - B)) * 60.0f / D);
+			} else {
+				//G is min or (B == G and R is max for sure)
+				a = R + G;
+				D = R - G;
+				hue = (((float) (G - B)) * 60.0f / D);
+			}
+			if (hue < 0.0f) {
+				hue += 360.0f;
+			}
+		} else {
+			//G <= R <= B
+			if (G < B) {
+				//B is max or B == R
+				//G is min
+				a = B + G;
+				D = B - G;
+				hue = (240.0f + ((float) (R - G)) * 60.0f / D);
+				if (hue < 0.0f) {
+					hue += 360.0f;
+				}
+			} else {
+				//G == R == B
+				return (int4)(0,(G+G+1)>>1,0,0); //hue undefined
+			}
+		}
+	}
+	return (int4)((int) (hue + 0.5f),(a + 1) >> 1,D,0);
+}
+
 __kernel
 void convert_to_HMMD(__read_only image2d_t image,
 		__write_only image2d_t output) {
@@ -39,77 +149,12 @@ void convert_to_HMMD(__read_only image2d_t image,
 	}
 	int2 coord = (int2) (x, y);
 	int4 px = read_imagei(image, sampler, coord);
-	int4 out;
 	float hue;
-	int R, G, B, a, d;
+	int R, G, B, a, d, H, S, D;
 	R = px.x;
 	G = px.y;
 	B = px.z;
-	if (R < G) {
-		if (G < B) {
-			//B is max,R is min
-			a = B + R;
-			d = B - R;
-			hue = (4.0f + ((float) (R - G)) / d);
-		} else {
-			//G is max or G == B
-			if (R < B) {
-				//R is min
-				a = G + R;
-				d = G - R;
-				hue = (2.0f + ((float) (B - R)) / d);
-			} else {
-				//B is min or R == B
-				a = G + B;
-				d = G - B;
-				hue = (2.0f + ((float) (B - R)) / d);
-
-			}
-		}
-		hue *= 60;
-		if (hue < 0.0) {
-			hue += 360;
-		}
-	} else {
-		if (B < R) {
-			//R is max or R == G
-			if (B < G) {
-				//B is min
-				a = R + B;
-				d = R - B;
-				hue = (((float) (G - B)) / d);
-			} else {
-				//G is min or (B == G and R is max for sure)
-				a = R + G;
-				d = R - G;
-				hue = (((float) (G - B)) / d);
-			}
-			hue *= 60;
-			if (hue < 0.0f) {
-				hue += 360;
-			}
-		} else {
-			//G <= R <= B
-			if (G < B) {
-				//B is max or B == R
-				//G is min
-				a = B + G;
-				d = B - G;
-				hue = (4.0f + ((float) (R - G)) / d);
-				hue *= 60;
-				if (hue < 0.0f) {
-					hue += 360;
-				}
-			} else {
-				//G == R == B
-				hue = -1.0f;				//undefined
-			}
-		}
-	}
-
-	out.x = (int) (hue + 0.5);			//range [0,360], 0=undefined
-	out.y = (int) (((a + 1) >> 1));			//range [0,255]
-	out.z = (int) d;						//range [0,255]
+	int4 out = convertPixelToHMMD(R,G,B);
 	write_imagei(output, coord, out);
 }
 
@@ -245,6 +290,50 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor){
 		}
 	}
 }
+
+int quantizeHMMDPixel(int4 px,
+__constant short* diffThresh, __constant uchar* nHueLevels,
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels){
+	int H = px.x;
+	int S = px.y;
+	int D = px.z;
+	// Note: lower threshold boundary is inclusive,
+	// i.e. diffThresh[..][m] <= (D of subspace m) < diffThresh[..][m+1]
+
+	// Quantize the Difference component, find the Subspace
+	int iSub = 0;
+	//TODO: optimize
+	while (diffThresh[iSub + 1] <= D)
+		iSub++;
+	//write_imageui(output,coord,D);
+
+
+	// Quantize the Hue component
+	int Hindex = (int) ((H / 360.0f) * nHueLevels[iSub]);
+	//TODO: swap 0 and 360 in HMMD conversion or just subtract 1 instead of doing the check
+	if (H == 360)
+		Hindex = 0;
+
+	short curDiffThresh = diffThresh[iSub];
+	uchar curSumLevel = nSumLevels[iSub];
+
+	// Quantize the Sum component
+	// The min value of Sum in a subspace is 0.5*diffThresh (see HMMD slice)
+	int Sindex = (int)(((float)S - 0.5f * curDiffThresh)
+						* curSumLevel
+						/ (255.0f - curDiffThresh));
+	if (Sindex >= curSumLevel)
+		Sindex = curSumLevel - 1;
+
+	/* The following quantization of Sum is more uniform and doesn't require the bounds check
+	 int Sindex = (int)floor((S - 0.5*diffThresh[quant_index][iSub])
+	 * nSumLevels[quant_index][iSub]
+	 / (256 - diffThresh[quant_index][iSub]));
+	 */
+
+	return nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
+}
+
 
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,

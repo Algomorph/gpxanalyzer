@@ -10,7 +10,6 @@ import pyopencl as cl
 from gpxanalyzer.utils.data import load_string_from_file
 import numpy as np
 import cl_manager as clm
-import time;
 import math;
 
 difference_thresholds = np.array([
@@ -35,6 +34,40 @@ n_cum_levels = np.array([
     [56, 40, 24, 8, 0],
     [112, 96, 64, 32, 0],
     [224, 192, 128, 64, 0]], dtype=np.uint8)
+
+def convert_RGB2HMMD(raster):
+    out = np.zeros(raster.shape, dtype = np.int16)
+    for y in xrange(raster.shape[0]):
+        for x in xrange(raster.shape[1]):
+            (R,G,B) = raster[y,x,:].astype(np.int32)
+        
+            mx=R
+            if(mx<G): mx=G
+            if(mx<B): mx=B
+        
+            mn=R
+            if(mn>G): mn=G
+            if(mn>B): mn=B
+        
+            if (mx == mn): # ( R == G == B )//exactly gray
+                hue = -1; #hue is undefined
+            else:
+                #solve Hue
+                if(R==mx):
+                    hue=float(G-B)* 60.0/(mx-mn)
+        
+                elif(G==mx):
+                    hue=120.0+float(B-R)* 60.0/(mx-mn)
+        
+                elif(B==mx):
+                    hue=240.0+float(R-G)* 60.0/(mx-mn)
+                if(hue<0.0): hue+=360.0
+        
+            H = int(hue + 0.5)                #range [0,360]
+            S = int((mx + mn)/2.0 + 0.5)      #range [0,255]
+            D = mx - mn                       #range [0,255]
+            out[y,x,:] = (H,S,D)
+    return out
 
 def hist_bin(raster):
     log_area = math.log(float(raster.size),2)
@@ -73,7 +106,7 @@ def hist_bin(raster):
                     descr[ix] +=1
     return descr
 
-def quantizeHMMD(raster):
+def quantize_HMMD(raster):
     out = np.zeros((raster.shape[0],raster.shape[1]), dtype = np.uint8)
     N = 3
     for y in xrange(raster.shape[0]):
@@ -172,6 +205,20 @@ class ColorStructureDescriptorExtractor:
     
     def __del__(self):
         self.release()
+        
+    def convert_cell_to_HMMD(self,cell):
+        convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
+        mgr = self.manager
+        if(not self.buffers_allocated):
+            self.allocate_buffers()
+        self.source_image_map.write(cell)
+        evt = convert_to_HMMD(mgr.queue, mgr.cell_shape, self.hmmd_group_dims, 
+                                    self.source_image_map.image_dev, self.hmmd_buffer)
+        out = np.zeros(cell.shape,dtype=np.int16)
+        cl.enqueue_copy(mgr.queue, out, self.hmmd_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
+        return out
+        
+        
 
     def extract(self, tile, length):
         self.allocate_buffers()
