@@ -48,7 +48,7 @@ class Test(unittest.TestCase):
     def test_hmmd_conversion(self):
         mgr = Test.mgr
         if(Test.extr is None):
-            Test.extr = cs.ColorStructureDescriptorExtractor(mgr)
+            Test.extr = cs.CSDescriptorExtractor(mgr)
         cell = Test.tile[0:mgr.cell_shape[0], 0:mgr.cell_shape[1]]
         res_c = mp7.convert_RGB2HMMD(cell)
         res_py = cs.convert_RGB2HMMD(cell)

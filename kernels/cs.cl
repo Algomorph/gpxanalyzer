@@ -18,9 +18,13 @@
 #ifdef __CDT_PARSER__
 #include "OpenCLKernel.hpp"
 #define BASE_QUANT_SPACE 256
-#define GROUP_SIZE 1
-#define WIDTH 2048
-#define HEIGHT 2048
+#define GROUP_WIDTH 8
+#define REGION_WIDTH 256
+#define REGION_GROUP_COUNT 32 //REGION_WIDTH / GROUP_WIDTH
+#define ITEMS_PER_QUANT_DESCR 32 //BASE_QUANT_SPACE / GROUP_WIDTH
+#define REGION_HEIGHT 256
+#define CUTOFF_WIDTH 249
+#define CUTOFF_HEIGHT 249
 #define SUBSAMPLE 3
 #define WINSIZE 64
 #endif
@@ -164,7 +168,7 @@ void window_hist_cumo(__read_only image2d_t input, __global uint* descriptor){
 	size_t y_thread = get_global_id(1);
 	size_t x = x_thread * SUBSAMPLE;
 	size_t y = y_thread * SUBSAMPLE;
-	if (x >= WIDTH|| y >= HEIGHT) {
+	if (x >= CUTOFF_WIDTH|| y >=CUTOFF_HEIGHT) {
 		return;
 	}
 	__global uint *descrRow = descriptor + (y_thread*249+x_thread)*BASE_QUANT_SPACE;
@@ -189,7 +193,7 @@ void window_hist_p(__read_only image2d_t input, __global uint* descriptor){
 	size_t x_window = x_thread * SUBSAMPLE;
 	//size_t group_row = get_group_id(1);
 	size_t colWithinGroup = get_local_id(0);
-	if(x_window >= WIDTH){
+	if(x_window >= CUTOFF_WIDTH){
 		return;
 	}
 	__global uint *descrRow = descriptor + x_thread*BASE_QUANT_SPACE;
@@ -216,7 +220,7 @@ void window_hist_p(__read_only image2d_t input, __global uint* descriptor){
 	}
 
 	// slide the window down the rest of the rows
-	for(y = SUBSAMPLE; y < HEIGHT; y += SUBSAMPLE )
+	for(y = SUBSAMPLE; y < CUTOFF_HEIGHT; y += SUBSAMPLE )
 	{
 		for(x = x_window; x < stop_at; x++){
 			del_y = y - SUBSAMPLE;
@@ -242,10 +246,10 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor){
 	//size_t group_row = get_group_id(1);
 	size_t colWithinGroup = get_local_id(0);
 	int2 dims = get_image_dim(input);
-	if(x_window >= WIDTH){
+	if(x_window >= CUTOFF_WIDTH){
 			return;
 	}
-	__local uint slideHistGroup[GROUP_SIZE][BASE_QUANT_SPACE];
+	__local uint slideHistGroup[GROUP_WIDTH][BASE_QUANT_SPACE];
 
 	//__local uint descrGroup[GROUP_SIZE][BASE_QUANT_SPACE];
 //	__local uint *slideHist = (__local uint *) slideHistGroup[colWithinGroup];
@@ -273,7 +277,7 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor){
 	}
 
 	// slide the window down the rest of the rows
-	for(y = SUBSAMPLE; y < HEIGHT; y += SUBSAMPLE )
+	for(y = SUBSAMPLE; y < CUTOFF_HEIGHT; y += SUBSAMPLE )
 	{
 		for(x = x_window; x < stop_at; x++){
 			del_y = y - SUBSAMPLE;
@@ -291,6 +295,11 @@ void window_hist(__read_only image2d_t input, __global uint* descriptor){
 	}
 }
 
+
+
+/**
+ * Determines the quant/level for the given HMMD pixel according to the provided thresholds
+ */
 int quantizeHMMDPixel(int4 px,
 __constant short* diffThresh, __constant uchar* nHueLevels,
 		__constant uchar* nSumLevels, __constant uchar* nCumLevels){
@@ -333,12 +342,13 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 
 	return nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
 }
-
-
+/**
+ * Quantize the whole HMMD image
+ */
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,
 __constant short* diffThresh, __constant uchar* nHueLevels,
-		__constant uchar* nSumLevels, __constant uchar* nCumLevels) {
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels){
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
 	int2 dims = get_image_dim(input);
@@ -347,43 +357,166 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	}
 	int2 coord = (int2) (x, y);
 	int4 px = read_imagei(input, sampler, coord);
-	int H = px.x;
-	int S = px.y;
-	int D = px.z;
-	// Note: lower threshold boundary is inclusive,
-	// i.e. diffThresh[..][m] <= (D of subspace m) < diffThresh[..][m+1]
-
-	// Quantize the Difference component, find the Subspace
-	int iSub = 0;
-	//TODO: optimize
-	while (diffThresh[iSub + 1] <= D)
-		iSub++;
-	//write_imageui(output,coord,D);
-
-
-	// Quantize the Hue component
-	int Hindex = (int) ((H / 360.0f) * nHueLevels[iSub]);
-	//TODO: swap 0 and 360 in HMMD conversion or just subtract 1 instead of doing the check
-	if (H == 360)
-		Hindex = 0;
-
-	short curDiffThresh = diffThresh[iSub];
-	uchar curSumLevel = nSumLevels[iSub];
-
-	// Quantize the Sum component
-	// The min value of Sum in a subspace is 0.5*diffThresh (see HMMD slice)
-	int Sindex = (int)(((float)S - 0.5f * curDiffThresh)
-						* curSumLevel
-					    / (255.0f - curDiffThresh));
-	if (Sindex >= curSumLevel)
-		Sindex = curSumLevel - 1;
-
-	/* The following quantization of Sum is more uniform and doesn't require the bounds check
-	 int Sindex = (int)floor((S - 0.5*diffThresh[quant_index][iSub])
-	 * nSumLevels[quant_index][iSub]
-	 / (256 - diffThresh[quant_index][iSub]));
-	 */
-
-	int result = nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
+	int result = quantizeHMMDPixel(px, diffThresh, nHueLevels,nSumLevels,nCumLevels);
 	write_imageui(output,coord,result);
 }
+
+__kernel
+void convert_to_hmmd_and_quantize(__read_only image2d_t image,
+		__write_only image2d_t output, __constant short* diffThresh, __constant uchar* nHueLevels,
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels){
+	size_t x = get_global_id(0);
+	size_t y = get_global_id(1);
+	int2 dims = get_image_dim(image);
+	if (x >= dims.x || y >= dims.y) {
+		return;
+	}
+	int2 coord = (int2) (x, y);
+	int4 px = read_imagei(image, sampler, coord);
+	float hue;
+	int R, G, B, a, d, H, S, D;
+	R = px.x;
+	G = px.y;
+	B = px.z;
+	int4 hmmd = convertPixelToHMMD(R,G,B);
+	int result = quantizeHMMDPixel(px, diffThresh, nHueLevels,nSumLevels,nCumLevels);
+	write_imageui(output,coord,result);
+}
+
+uint4 histToBinDescriptor(uint* hist){
+	uint4 res;
+	for(int bin = 0; bin < 32; bin++, hist++){
+		if(*hist > 0){
+			res.x |= (long)(1 << bin);
+		}
+	}
+	for(int bin = 0; bin < 32; bin++, hist++){
+		if(*hist > 0){
+			res.y |= (long)(1 << bin);
+		}
+	}
+	for(int bin = 0; bin < 32; bin++, hist++){
+		if(*hist > 0){
+			res.z |= (long)(1 << bin);
+		}
+	}
+	for(int bin = 0; bin < 32; bin++, hist++){
+		if(*hist > 0){
+			res.w |= (long)(1 << bin);
+		}
+	}
+	return res;
+}
+/**
+ * Faster (Image) version
+ */
+__kernel
+void csDescriptorBitstringsImage(__read_only image2d_t input, __write_only image2d_t output){
+	//each thread does one row
+	size_t y = get_global_id(0);
+	int2 dims = get_image_dim(input);
+	if(y >= dims.y){
+		return;
+	}
+	//uint slideHist[256] = {0};
+	uint bitstring[8] = {0};
+	//TODO: try to spead up by caching the reads, or using local memory to store intermediate result?
+	//uint cache[8];
+	//fill in the first window's row histogram
+	int xProbe = 0;
+
+	uint bin, idxUint, idxBit;
+
+	//horizontal pass - compute row-wise histogram bitstrings (scan 1D horizontal areas of window-width for each pixel)
+#pragma unroll
+	for (; xProbe < 8; xProbe++){
+		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
+		idxUint = bin >> 5;
+		idxBit = bin - (idxUint << 5);
+		bitstring[idxUint] |= (1 << idxBit);
+	}
+	write_imageui(output,(int2)(y,0),(uint4)(bitstring[0],bitstring[1],bitstring[2],bitstring[3]));
+	write_imageui(output,(int2)(y,1),(uint4)(bitstring[4],bitstring[5],bitstring[6],bitstring[7]));
+	int x = 0;
+	int ixOut;
+#pragma unroll
+	for(xProbe = 8; xProbe < dims.x; xProbe++){
+		bin = read_imageui(input,sampler,(int2) (x, y)).x;
+		idxUint = bin >> 5; //same as division by 32
+		idxBit = bin - (idxUint << 5);//same as modulo division by 32
+		bitstring[idxUint] &= ~(1 << idxBit);
+		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
+		idxUint = bin >> 5; //same as division by 32
+		idxBit = bin - (idxUint << 5);//same as modulo division by 32
+		bitstring[idxUint] |= (1 << idxBit);
+		++x;
+		ixOut = (x << 1);
+		write_imageui(output,(int2)(y,ixOut),(uint4)(bitstring[0],bitstring[1],bitstring[2],bitstring[3]));
+		write_imageui(output,(int2)(y,ixOut+1),(uint4)(bitstring[4],bitstring[5],bitstring[6],bitstring[7]));
+	}
+
+	//transpose thread directions
+	int x = y;
+	int lbound = (dims.y<<2);
+#pragma unroll
+	for(int y = 0; y < lbound; y+=2){
+		uint4 lower = read_imageui(input,sampler,(int2) (x, y)).x;
+		uint4 upper = read_imageui(input,sampler,(int2) (x, y+1)).x;
+	}
+}
+
+/**
+ * Slower (Buffer) version
+ */
+__kernel
+void csDescriptorBitstringsBuf(__read_only image2d_t input, __global uint* output){
+	//each thread does one row
+	size_t y = get_global_id(0);
+	int2 dims = get_image_dim(input);
+	if(y >= dims.y){
+		return;
+	}
+	//uint slideHist[256] = {0};
+	uint bitstring[8] = {0};
+	//TODO: try to spead up by caching the reads, or using local memory to store intermediate result
+	//uint cache[8];
+	//fill in the first window's row histogram
+	int xProbe = 0;
+	__global uint* out = output + (dims.x << 3)*y;
+
+	uint bin, idxUint, idxBit;
+#pragma unroll
+	for (; xProbe < 8; xProbe++){
+		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
+		idxUint = bin >> 5;
+		idxBit = bin - (idxUint << 5);
+		bitstring[idxUint] |= (1 << idxBit);
+	}
+#pragma unroll
+	for (int ixUint = 0; ixUint < 8; ixUint++){
+		out[ixUint] = bitstring[ixUint];
+	}
+	out+=8;
+	int x = 0;
+	int ixOut;
+	for(xProbe = 8; xProbe < dims.x; xProbe++){
+		bin = read_imageui(input,sampler,(int2) (x, y)).x;
+		idxUint = bin >> 5; //same as division by 32
+		idxBit = bin - (idxUint << 5);//same as modulo division by 32
+		bitstring[idxUint] &= ~(1 << idxBit);
+		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
+		idxUint = bin >> 5; //same as division by 32
+		idxBit = bin - (idxUint << 5);//same as modulo division by 32
+		bitstring[idxUint] |= (1 << idxBit);
+		++x;
+#pragma unroll
+		for (int ixUint = 0; ixUint < 8; ixUint++){
+			out[ixUint] = bitstring[ixUint];
+		}
+		out += 8;
+	}
+}
+
+
+
+
