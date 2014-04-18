@@ -26,10 +26,13 @@
 #define CUTOFF_WIDTH 249
 #define CUTOFF_HEIGHT 249
 #define SUBSAMPLE 3
-#define WINSIZE 64
 #endif
 
+#define WINSIZE 8
+
 __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE
+		| CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+__constant sampler_t sampler2 = CLK_NORMALIZED_COORDS_FALSE
 		| CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 
 /**
@@ -429,7 +432,7 @@ void csDescriptorBitstringsImage(__read_only image2d_t input, __write_only image
 
 	//horizontal pass - compute row-wise histogram bitstrings (scan 1D horizontal areas of window-width for each pixel)
 #pragma unroll
-	for (; xProbe < 8; xProbe++){
+	for (; xProbe < WINSIZE; xProbe++){
 		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
 		idxUint = bin >> 5;
 		idxBit = bin - (idxUint << 5);
@@ -454,14 +457,66 @@ void csDescriptorBitstringsImage(__read_only image2d_t input, __write_only image
 		write_imageui(output,(int2)(y,ixOut),(uint4)(bitstring[0],bitstring[1],bitstring[2],bitstring[3]));
 		write_imageui(output,(int2)(y,ixOut+1),(uint4)(bitstring[4],bitstring[5],bitstring[6],bitstring[7]));
 	}
+}
 
+__kernel
+void csDescriptorBitstringsWindow(__read_only image2d_t input, __write_only image2d_t output){
 	//transpose thread directions
-	int x = y;
-	int lbound = (dims.y<<2);
+	size_t x = get_global_id(0);
+	int2 dims = get_image_dim(input);
+	if(x >= dims.x){
+		return;
+	}
+	uint4 aggLower = (uint4)(0,0,0,0);
+	uint4 aggUpper = (uint4)(0,0,0,0);
+	uint4 upper, lower;
+	uint4 bitCache[16];
+
 #pragma unroll
-	for(int y = 0; y < lbound; y+=2){
-		uint4 lower = read_imageui(input,sampler,(int2) (x, y)).x;
-		uint4 upper = read_imageui(input,sampler,(int2) (x, y+1)).x;
+	for(int y = 0; y < (WINSIZE<<1); y+=2){
+		lower = read_imageui(input,sampler,(int2) (x, y));
+		upper =  read_imageui(input,sampler,(int2) (x, y+1));
+		bitCache[y] = lower &= ~aggLower;
+		bitCache[y+1] = lower &= ~aggUpper;
+		aggLower |= lower;
+		aggUpper |= upper;
+	}
+	//write the first bitstring
+	write_imageui(output,(int2)(x,0),aggLower);
+	write_imageui(output,(int2)(x,1),aggUpper);
+	int del_y = 0;
+#pragma unroll
+	for(int y = (WINSIZE<<1); y < dims.y; y+=2){
+
+		aggLower |= read_imageui(input,sampler,(int2) (x, y));
+		aggUpper |= read_imageui(input,sampler,(int2) (x, y));
+		del_y+=2;
+		write_imageui(output,(int2)(x,del_y),aggLower);
+		write_imageui(output,(int2)(x,del_y+1),aggUpper);
+	}
+}
+
+__kernel
+void csDescriptorBitstringsWindowBrute(__read_only image2d_t input, __write_only image2d_t output){
+	//transpose thread directions
+	size_t x = get_global_id(0);
+	int2 dims = get_image_dim(input);
+	if(x >= dims.x){
+		return;
+	}
+	uint4 aggLower, aggUpper;
+	int gStopAt = dims.y - (WINSIZE<<1) + 2;
+#pragma unroll
+	for(int yg = 0; yg < gStopAt; yg+=2){
+		int stopAt = yg+(WINSIZE<<1);
+		aggLower = (uint4)(0,0,0,0);
+		aggUpper = (uint4)(0,0,0,0);
+		for(int y = yg; y < stopAt; y+=2){
+			aggLower |= read_imageui(input,sampler,(int2) (x, y));;
+			aggUpper |=  read_imageui(input,sampler,(int2) (x, y+1));;
+		}
+		write_imageui(output,(int2)(x,yg),aggLower);
+		write_imageui(output,(int2)(x,yg+1),aggUpper);
 	}
 }
 
@@ -469,7 +524,7 @@ void csDescriptorBitstringsImage(__read_only image2d_t input, __write_only image
  * Slower (Buffer) version
  */
 __kernel
-void csDescriptorBitstringsBuf(__read_only image2d_t input, __global uint* output){
+void csDescriptorBitstringsBuffer(__read_only image2d_t input, __global uint* output){
 	//each thread does one row
 	size_t y = get_global_id(0);
 	int2 dims = get_image_dim(input);
