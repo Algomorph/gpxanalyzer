@@ -69,6 +69,29 @@ def convert_RGB2HMMD(raster):
             out[y,x,:] = (H,S,D)
     return out
 
+def bitstring_vals(bitstring_arr):
+    if(len(bitstring_arr.shape) > 1):
+        bitstring_arr = bitstring_arr.flatten()
+    vals = []
+    
+    for ix_uint in range(0,8):
+        uint = bitstring_arr[ix_uint]
+        addend = (ix_uint << 5)
+        for bit_ix in range(0,32):
+            if(uint & (1 << bit_ix)):
+                vals.append(addend + bit_ix)
+    return np.uint8(vals)
+
+def to_bitstring(arr):
+    bts = np.zeros((8),np.uint32)
+    for bin in arr:
+        idxUint = bin >> 5
+        idxBit = bin - (idxUint << 5)
+        bts[idxUint] |= (1 << idxBit)
+    return bts
+        
+    
+
 def hist_bin(raster):
     log_area = math.log(float(raster.size),2)
     scale_power = max(int(0.5 * log_area - 8 + 0.5),0)
@@ -130,9 +153,18 @@ def quantize_HMMD(raster):
             out[y,x] = px
     return out
 
-class ColorStructureDescriptorExtractor:
-    COMPILE_STRING = "-D WIDTH={0:d} -D HEIGHT={1:d} -D SUBSAMPLE={2:d} -D WINSIZE={3:d}"+\
-                                          " -D BASE_QUANT_SPACE=256 -D GROUP_SIZE={4:d}"
+class CSDescriptorExtractor:
+    BASE_QUANT_SPACE = 256
+    REGION_SIZE = 256
+    COMPILE_STRING = "-D CUTOFF_WIDTH={0:d} -D CUTOFF_HEIGHT={1:d} -D SUBSAMPLE={2:d} -D WINSIZE={3:d}"+\
+                                          " -D BASE_QUANT_SPACE={4:d} -D GROUP_WIDTH={5:d}"+\
+                                          " -D REGION_WIDTH={6:d} -D REGION_HEIGHT={6:d} -D REGION_GROUP_COUNT={7:d}"+\
+                                          " -D ITEMS_PER_QUANT_DESCR={8:d}"
+    descr_size_by_index ={0:32,
+                          1:64,
+                          2:128,
+                          3:BASE_QUANT_SPACE
+                          }
     @staticmethod
     def calc_winsize(cell_size):
         log_area = math.log(float(cell_size*cell_size),2)
@@ -143,13 +175,15 @@ class ColorStructureDescriptorExtractor:
     
     def __init__(self, cl_manager, quant_index = 3):
         self.manager = cl_manager
-        self.wg_size = 8
+        mgr = cl_manager
+        dev = mgr.context.devices[0]
+        mem_per_descriptor= 4*CSDescriptorExtractor.BASE_QUANT_SPACE
+        #leave half for registers and other junk
+        #we need a single group to fit a number of descriptors in local memory
+        self.group_width = dev.local_mem_size / 2 / mem_per_descriptor 
         self.quant_index = 3;
         
-        cs_cl_source = load_string_from_file("kernels/cs.cl")
-        
-        mgr = cl_manager
-        winsize,subsample= ColorStructureDescriptorExtractor.calc_winsize(mgr.cell_height)
+        winsize,subsample= CSDescriptorExtractor.calc_winsize(self.REGION_SIZE)
         self.winsize = winsize
         self.subsample = subsample
         
@@ -158,24 +192,24 @@ class ColorStructureDescriptorExtractor:
         self.mod_width = mod_width
         self.mod_height = mod_height
 
-        self.program = cl.Program(cl_manager.context, 
-                                  cs_cl_source
-                                  ).build(ColorStructureDescriptorExtractor.COMPILE_STRING
-                                          .format(mod_width,mod_height,subsample,winsize,self.wg_size))
+        self.recompile()
         
         
         self.hmmd_group_dims = (32, 4)
         self.hist_global_dims =(mgr.cell_width / subsample,)
-        self.hist_group_dims = (self.wg_size,)
+        self.hist_group_dims = (self.group_width,)
         
         self.buffers_allocated = False
+        self.descr_buff = None
         
     def recompile(self):
         self.program = cl.Program(self.manager.context, 
                                   load_string_from_file("kernels/cs.cl")
-                                  ).build(ColorStructureDescriptorExtractor.COMPILE_STRING
+                                  ).build(CSDescriptorExtractor.COMPILE_STRING
                                           .format(self.mod_width,self.mod_height,self.subsample,
-                                                  self.winsize,self.wg_size))
+                                                  self.winsize,self.BASE_QUANT_SPACE,self.group_width,
+                                                  self.REGION_SIZE, self.REGION_SIZE / self.group_width, 
+                                                  self.BASE_QUANT_SPACE / self.group_width))
         
     def allocate_buffers(self):
         if(not self.buffers_allocated):
@@ -202,10 +236,34 @@ class ColorStructureDescriptorExtractor:
             self.hmmd_buffer.release()
             self.source_image_map.release()
             self.buffers_allocated = False
+        if(self.descr_buff is not None):
+            self.descr_buff.release()
     
     def __del__(self):
         self.release()
         
+    def extract_base_level(self,quant_cell):
+        self.allocate_buffers()
+        mgr = self.manager
+        if(self.descr_buff is None):
+            num_descriptors = (self.manager.cell_width  / self.group_width) * (self.manager.cell_height  / self.REGION_SIZE)
+            self.descr_buff = cl.Buffer(mgr.context,cl.mem_flags.WRITE_ONLY,size=num_descriptors*self.BASE_QUANT_SPACE*4)
+        cl.enqueue_copy(mgr.queue,self.quant_buffer,quant_cell,origin=(0,0),region=mgr.cell_shape)
+        cs_descriptors_stage1 = cl.Kernel(self.program, "cs_descriptors_stage1")
+        
+    
+    def quantize_HMMD_cell(self,hmmd_cell):
+        quantize_HMMD = cl.Kernel(self.program, "quantize_HMMD")
+        mgr = self.manager
+        self.allocate_buffers()
+        cl.enqueue_copy(mgr.queue,self.hmmd_buffer,hmmd_cell,origin=(0,0),region=mgr.cell_shape)
+        evt = quantize_HMMD(mgr.queue,mgr.cell_shape, self.hmmd_group_dims,
+                              self.hmmd_buffer,self.quant_buffer,self.diff_thresh_buff,
+                              self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)
+        out = np.zeros(mgr.cell_shape,dtype=np.uint8)
+        cl.enqueue_copy(mgr.queue, out, self.quant_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
+        return out
+    
     def convert_cell_to_HMMD(self,cell):
         convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
         mgr = self.manager
