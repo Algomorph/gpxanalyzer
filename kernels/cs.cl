@@ -334,9 +334,24 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	return nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
 }
 
-
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,
+__constant short* diffThresh, __constant uchar* nHueLevels,
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels) {
+	size_t x = get_global_id(0);
+	size_t y = get_global_id(1);
+	int2 dims = get_image_dim(input);
+	if (x >= dims.x || y >= dims.y) {
+		return;
+	}
+	int2 coord = (int2) (x, y);
+	int4 px = read_imagei(input, sampler, coord);
+	int result = quantizeHMMDPixel(px,diffThresh,nHueLevels,nSumLevels,nCumLevels);
+	write_imageui(output,coord,result);
+}
+
+__kernel
+void quantize_HMMD2(__read_only image2d_t input, __write_only image2d_t output,
 __constant short* diffThresh, __constant uchar* nHueLevels,
 		__constant uchar* nSumLevels, __constant uchar* nCumLevels) {
 	size_t x = get_global_id(0);
@@ -362,7 +377,7 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 
 
 	// Quantize the Hue component
-	int Hindex = (int) ((H / 360.0f) * nHueLevels[iSub]);
+	int Hindex = (int) (((float)H / 360.0f) * nHueLevels[iSub]);
 	//TODO: swap 0 and 360 in HMMD conversion or just subtract 1 instead of doing the check
 	if (H == 360)
 		Hindex = 0;

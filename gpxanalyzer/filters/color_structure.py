@@ -184,7 +184,7 @@ class ColorStructureDescriptorExtractor:
             self.hmmd_buffer = cl.Image(cl_manager.context, cl.mem_flags.READ_WRITE, 
                                         cl_manager.image_int16_format, cl_manager.cell_shape)
             self.quant_buffer = cl.Image(cl_manager.context, cl.mem_flags.READ_WRITE,
-                                         cl.ImageFormat(cl.channel_order.A, cl.channel_type.UNSIGNED_INT8),
+                                         cl.ImageFormat(cl.channel_order.R, cl.channel_type.UNSIGNED_INT8),
                                          cl_manager.cell_shape)
             idx = self.quant_index
             self.diff_thresh_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
@@ -209,16 +209,25 @@ class ColorStructureDescriptorExtractor:
     def convert_cell_to_HMMD(self,cell):
         convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
         mgr = self.manager
-        if(not self.buffers_allocated):
-            self.allocate_buffers()
+        self.allocate_buffers()
         self.source_image_map.write(cell)
         evt = convert_to_HMMD(mgr.queue, mgr.cell_shape, self.hmmd_group_dims, 
                                     self.source_image_map.image_dev, self.hmmd_buffer)
         out = np.zeros(cell.shape,dtype=np.int16)
         cl.enqueue_copy(mgr.queue, out, self.hmmd_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
         return out
-        
-        
+    
+    def quantize_HMMD_cell(self,hmmd_cell):
+        self.allocate_buffers()
+        quantize_HMMD = cl.Kernel(self.program,"quantize_HMMD")
+        mgr = self.manager
+        cl.enqueue_copy(mgr.queue,self.hmmd_buffer,hmmd_cell,origin=(0,0),region=mgr.cell_shape)
+        evt = quantize_HMMD(mgr.queue,mgr.cell_shape, self.hmmd_group_dims,
+                              self.hmmd_buffer,self.quant_buffer,self.diff_thresh_buff,
+                              self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)
+        out = np.zeros(self.quant_buffer.shape,dtype=np.uint8)
+        cl.enqueue_copy(mgr.queue,out,self.quant_buffer,origin=(0,0),region=mgr.cell_shape, wait_for = [evt])
+        return out
 
     def extract(self, tile, length):
         self.allocate_buffers()

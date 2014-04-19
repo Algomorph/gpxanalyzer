@@ -6,8 +6,8 @@ Created on Feb 24, 2014
 from filter import InPlaceFilter
 import numpy as np
 import pyopencl as cl
-import gpxanalyzer.utils.data as dm
-from gpxanalyzer.utils.oo import overrides
+import gpxa.utils.data as dm
+from gpxa.utils.oo import overrides
 
 
 class SummedAreaTableFilter(InPlaceFilter):

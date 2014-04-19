@@ -7,7 +7,7 @@ import ConfigParser
 import os
 import re
 
-from gpxanalyzer.utils.data import Bunch
+from gpxa.utils.data import Bunch
 
 default_setting_hash = {"system":
                             {"max_tile_cache_mem":"4096MB",
@@ -42,7 +42,7 @@ byte_sizes = {"B":1,
               "GB":1073741824,}
 
 
-CONFIG_FILE_NAME = "gpxanalyzer.cfg"
+CONFIG_FILE_NAME = "gpxa.cfg"
 
 #TODO: make these recursive instead and define the bunch-to-hash inside the Bunch class
 def config_hash_to_bunch(setting_hash):
@@ -120,7 +120,7 @@ def load_config(directory, verbose = False):
     @param directory: location (directory) where to try and read the config file from (path excluding the file name) and where to save default config if no config is there.
     @type verbose: bool
     @param verbose: print notifications
-    @type return: gpxanalyzer.utils.data.Bunch
+    @type return: gpxa.utils.data.Bunch
     @return configuration
     '''
     path = directory + os.path.sep + CONFIG_FILE_NAME
@@ -144,7 +144,7 @@ def save_config(directory, config_bunch, verbose = False):
     Saves the given configuration in the given directory.
     @type directory: str
     @param directory: location (directory) where to write the config file (path excluding the file name)
-    @type config_bunch: gpxanalyzer.utils.data.Bunch
+    @type config_bunch: gpxa.utils.data.Bunch
     @param config_bunch: the configuration to save
     @type verbose: bool
     @param verbose: print save notification
