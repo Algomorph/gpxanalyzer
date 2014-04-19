@@ -9,7 +9,8 @@ from gpxanalyzer.utils import system
 import pyopencl as cl
 from gpxanalyzer.utils.data import load_string_from_file
 import numpy as np
-import cl_manager as clm
+import gpxanalyzer.filters.cl_manager as clm
+import libMPEG7 as mp7
 import math;
 
 difference_thresholds = np.array([
@@ -273,18 +274,6 @@ class CSDescriptorExtractor:
                                     self.source_image_map.image_dev, self.hmmd_buffer)
         out = np.zeros(cell.shape,dtype=np.int16)
         cl.enqueue_copy(mgr.queue, out, self.hmmd_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
-        return out
-    
-    def quantize_HMMD_cell(self,hmmd_cell):
-        self.allocate_buffers()
-        quantize_HMMD = cl.Kernel(self.program,"quantize_HMMD")
-        mgr = self.manager
-        cl.enqueue_copy(mgr.queue,self.hmmd_buffer,hmmd_cell,origin=(0,0),region=mgr.cell_shape)
-        evt = quantize_HMMD(mgr.queue,mgr.cell_shape, self.hmmd_group_dims,
-                              self.hmmd_buffer,self.quant_buffer,self.diff_thresh_buff,
-                              self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)
-        out = np.zeros(self.quant_buffer.shape,dtype=np.uint8)
-        cl.enqueue_copy(mgr.queue,out,self.quant_buffer,origin=(0,0),region=mgr.cell_shape, wait_for = [evt])
         return out
 
     def extract(self, tile, length):

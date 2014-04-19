@@ -33,9 +33,8 @@ class Test(unittest.TestCase):
                                                 cell_shape=(cell_height, cell_width), verbose=True)
         n_channels = 3
         Test.tile = np.random.random_integers(0, 255, (tile_height, tile_width, n_channels)).astype(np.uint8)
-        Test.extr = cs.ColorStructureDescriptorExtractor(Test.mgr)
+        Test.extr = cs.CSDescriptorExtractor(Test.mgr)
         Test.cell = Test.tile[0:Test.mgr.cell_shape[0], 0:Test.mgr.cell_shape[1]]
-        
         
 # TODO: adapt SAT to use image type
 #     def test_sat_filter_simple(self):
@@ -50,12 +49,12 @@ class Test(unittest.TestCase):
     def test_hmmd_conversion(self):
         cell = Test.cell
         res_c = mp7.convert_RGB2HMMD(cell)
-        res_py = cs.convert_RGB2HMMD(cell)
+        #res_py = cs.convert_RGB2HMMD(cell)
         mgr = Test.mgr
         
-        self.assertTrue(np.array_equal(res_py[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
-        self.assertTrue(np.array_equal(res_py[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
-        self.assertTrue(np.array_equal(res_py[:,:,1], res_c[:,:,1]), "S channel in hmmd converstions doesn't match")
+#         self.assertTrue(np.array_equal(res_py[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
+#         self.assertTrue(np.array_equal(res_py[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
+#         self.assertTrue(np.array_equal(res_py[:,:,1], res_c[:,:,1]), "S channel in hmmd converstions doesn't match")
         
         cell4 = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
         ex = Test.extr
@@ -75,6 +74,32 @@ class Test(unittest.TestCase):
         res_cl = extr.quantize_HMMD_cell(hmmd_cell4)
         res_c = mp7.quantize_HMMD(hmmd_cell)
         self.assertTrue(np.array_equal(res_cl,res_c),"HMMD quantization mismatch")
+        
+    def test_bitstrings(self):
+        cell = Test.cell
+        mgr = Test.mgr
+        hmmd = mp7.convert_RGB2HMMD(cell)
+        quant = mp7.quantize_HMMD(hmmd)
+        extr = Test.extr
+        extr.allocate_buffers()
+        qb = extr.quant_buffer
+        output = cl.Image(mgr.context,cl.mem_flags.READ_WRITE,
+                          cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.UNSIGNED_INT32),
+                          shape = (mgr.cell_width, mgr.cell_height*2))
+        res_brute = np.zeros((mgr.cell_height*2,mgr.cell_width,4),dtype=np.uint32)
+        res_cache = np.zeros_like(res_brute)
+        
+        up_evt = cl.enqueue_copy(mgr.queue,qb,quant,origin = (0,0), region = mgr.cell_shape)
+        
+        ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
+        ex2_evt = extr.program.csDescriptorWindowBitstringsBrute(mgr.queue,(mgr.cell_width,),(32,), output, output, wait_for=[ex1_evt])
+        dl_evt = cl.enqueue_copy(mgr.queue, res_brute, output, origin = (0,0), region = output.shape, wait_for = [ex2_evt])
+        
+        ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
+        ex2_evt = extr.program.csDescriptorWindowBitstringsCache(mgr.queue,(mgr.cell_width,),(32,), output, output, wait_for=[ex1_evt])
+        dl_evt = cl.enqueue_copy(mgr.queue, res_cache, output, origin = (0,0), region = output.shape, wait_for = [ex2_evt])
+        
+        self.assertTrue(np.array_equal(res_brute, res_cache))
         
     
     def tearDown(self):
