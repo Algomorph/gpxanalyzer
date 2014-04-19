@@ -18,9 +18,9 @@ import shutil
 import sys
 import time
 
-from console import print_progress
-from data import get_raster_names, find_extension
-import data as dm
+from gpxanalyzer.utils.console import print_progress
+
+import gpxanalyzer.utils.data as dm
 import image_size as imz
 
 import tiledownloader as td
@@ -32,7 +32,7 @@ def arrange_tile_levels_into_zxy(tile_dir):
     
     first_tile_name = dm.get_raster_names(tile_dir + os.path.sep + zoom_dirs[0])[0]
     
-    extension = "." + find_extension(first_tile_name)
+    extension = "." + dm.find_extension(first_tile_name)
     #TODO: add progress reporting (count the files in folders initially?)
     for zoom_subfolder in zoom_dirs:
         zoom_dir = tile_dir + os.path.sep + zoom_subfolder
@@ -57,7 +57,7 @@ def arrange_zxy_into_tile_levels(pyramid_dir):
     
     first_tile_name = dm.get_raster_names(first_im_dir)[0]
     
-    extension = "." + find_extension(first_tile_name)
+    extension = "." + dm.find_extension(first_tile_name)
     #TODO: add progress reporting (count the files in folders initially?)
     for zoom_subfolder in zoom_dirs:
         zoom_dir = pyramid_dir + os.path.sep + zoom_subfolder
@@ -75,10 +75,10 @@ def arrange_zxy_into_tile_levels(pyramid_dir):
             shutil.rmtree(x_dir)
 
 def pyramidize(image_id, orig_tile_dir, pyramid_base_dir, data_source, arrange_in_zxy_format = False, progress_callback = None):
-    tile_names = get_raster_names(orig_tile_dir)
+    tile_names = dm.get_raster_names(orig_tile_dir)
     n_tiles_x, n_tiles_y = get_cell_counts(tile_names)
     first_tile_name = tile_names[0]
-    tile_extension = find_extension(first_tile_name)
+    tile_extension = dm.find_extension(first_tile_name)
     if(tile_extension.lower() != "png"):
         conversion_necessary = True
     else:

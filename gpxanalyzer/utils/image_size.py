@@ -25,10 +25,10 @@ def get_image_info(file_path):
     """
     size = os.path.getsize(file_path)
 
-    with open(file_path, "rb") as input:
+    with open(file_path, "rb") as im_file:
         height = -1
         width = -1
-        data = input.read(26)
+        data = im_file.read(26)
         msg = " raised while trying to decode as JPEG."
         #TODO: obtain number of channels as well
         n_channels = 3
@@ -68,20 +68,20 @@ def get_image_info(file_path):
                 n_channels = 1 #greyscale
         elif (size >= 2) and data.startswith('\377\330'):
             # JPEG
-            input.seek(0)
-            input.read(2)
-            b = input.read(1)
+            im_file.seek(0)
+            im_file.read(2)
+            b = im_file.read(1)
             try:
                 while (b and ord(b) != 0xDA):
-                    while (ord(b) != 0xFF): b = input.read(1)
-                    while (ord(b) == 0xFF): b = input.read(1)
+                    while (ord(b) != 0xFF): b = im_file.read(1)
+                    while (ord(b) == 0xFF): b = im_file.read(1)
                     if (ord(b) >= 0xC0 and ord(b) <= 0xC3):
-                        input.read(3)
-                        h, w, d = struct.unpack(">HHB", input.read(5))
+                        im_file.read(3)
+                        h, w, d = struct.unpack(">HHB", im_file.read(5))
                         break
                     else:
-                        input.read(int(struct.unpack(">H", input.read(2))[0])-2)
-                    b = input.read(1)
+                        im_file.read(int(struct.unpack(">H", im_file.read(2))[0])-2)
+                    b = im_file.read(1)
 
                 width = int(w)
                 height = int(h)
@@ -94,21 +94,21 @@ def get_image_info(file_path):
                 raise UnknownImageFormat(e.__class__.__name__ + msg)
         elif size >= 2:
             #see http://en.wikipedia.org/wiki/ICO_(file_format)
-            input.seek(0)
-            reserved = input.read(2)
+            im_file.seek(0)
+            reserved = im_file.read(2)
             if 0 != struct.unpack("<H", reserved )[0]:
                 raise UnknownImageFormat(FILE_UNKNOWN)
-            input.read(2)#format
+            im_file.read(2)#format
             assert 1 == struct.unpack("<H", format)[0]
-            num = input.read(2)
+            num = im_file.read(2)
             num = struct.unpack("<H", num)[0]
             if num > 1:
                 import warnings
-                warnings.warn("ICO File contains more than one image")
+                warnings.warn("ICO im_file contains more than one image")
             #http://msdn.microsoft.com/en-us/library/ms997538.aspx
-            w = input.read(1)
-            h = input.read(1)
-            d = input.read(1)
+            w = im_file.read(1)
+            h = im_file.read(1)
+            d = im_file.read(1)
             width = ord(w)
             height = ord(h)
             n_channels = ord(d)

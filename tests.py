@@ -6,12 +6,12 @@ Created on Mar 6, 2014
 import os
 import unittest
 
-import gpxanalizer.filters.cl_manager as clm
-#import gpxanalizer.filters.sat as sat
-import gpxanalizer.filters.color_structure as cs
+import gpxanalyzer.filters.cl_manager as clm
+#import gpxanalyzer.filters.sat as sat
+import gpxanalyzer.filters.color_structure as cs
 import numpy as np
 import pyopencl as cl
-import gpxanalizer.utils.system as system
+import gpxanalyzer.utils.system as system
 import libMPEG7 as mp7
 
 
