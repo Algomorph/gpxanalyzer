@@ -12,6 +12,7 @@ import numpy as np
 import gpxanalyzer.filters.cl_manager as clm
 import libMPEG7 as mp7
 import math;
+from numpy import dtype
 
 difference_thresholds = np.array([
     [0, 6, 60, 110, 256, -1],
@@ -70,6 +71,44 @@ def convert_RGB2HMMD(raster):
             out[y,x,:] = (H,S,D)
     return out
 
+def to_bitstring(arr):
+    bts = np.zeros((8),np.uint32)
+    for bin in arr:
+        idxUint = bin >> 5
+        idxBit = bin - (idxUint << 5)
+        bts[idxUint] |= (1 << idxBit)
+    return bts
+
+def extract_row_bitstrings(cell):
+    bitstrings = np.zeros((cell.shape[0]*2,cell.shape[1],4),dtype=np.uint32)
+    for ix_row in xrange(0,cell.shape[0]):
+        row = cell[ix_row]
+        for ix_bt in xrange(0, cell.shape[1]-7):
+            bt = to_bitstring(row[ix_bt:ix_bt+8])
+            ix_ins = ix_bt<<1
+            bitstrings[ix_ins,ix_row] = bt[0:4]
+            bitstrings[ix_ins+1,ix_row] = bt[4:8]
+    return bitstrings
+
+
+def agg_bitstrings(bitstring_arr):
+    if(len(bitstring_arr.shape) > 2):
+        bitstring_arr = bitstring_arr.transpose(1,0,2).reshape((8,-1))
+    agg = np.array([0,0,0,0,0,0,0,0],dtype=np.uint32)
+    for bitstring in bitstring_arr:
+        agg |= bitstring
+    return agg
+
+def extract_window_bitstrings(row_bitstrings):
+    bitstrings = np.zeros_like(row_bitstrings)
+    for ix_row in xrange(0,row_bitstrings.shape[0],2):
+        for ix_col in xrange(0,row_bitstrings.shape[1]):
+            chunk = row_bitstrings[ix_row:ix_row+2,ix_col:ix_col+8]
+            bitstring = agg_bitstrings(chunk)
+            bitstrings[ix_row,ix_col] = bitstring[0:4]
+            bitstrings[ix_row+1,ix_col] = bitstring[4:8]
+        
+
 def bitstring_vals(bitstring_arr):
     if(len(bitstring_arr.shape) > 1):
         bitstring_arr = bitstring_arr.flatten()
@@ -83,13 +122,8 @@ def bitstring_vals(bitstring_arr):
                 vals.append(addend + bit_ix)
     return np.uint8(vals)
 
-def to_bitstring(arr):
-    bts = np.zeros((8),np.uint32)
-    for bin in arr:
-        idxUint = bin >> 5
-        idxBit = bin - (idxUint << 5)
-        bts[idxUint] |= (1 << idxBit)
-    return bts
+
+
         
     
 
@@ -251,11 +285,14 @@ class CSDescriptorExtractor:
             self.descr_buff = cl.Buffer(mgr.context,cl.mem_flags.WRITE_ONLY,size=num_descriptors*self.BASE_QUANT_SPACE*4)
         cl.enqueue_copy(mgr.queue,self.quant_buffer,quant_cell,origin=(0,0),region=mgr.cell_shape)
         cs_descriptors_stage1 = cl.Kernel(self.program, "cs_descriptors_stage1")
-        
     
     def quantize_HMMD_cell(self,hmmd_cell):
-        quantize_HMMD = cl.Kernel(self.program, "quantize_HMMD")
         mgr = self.manager
+        
+        if(hmmd_cell.shape[2] == 3):
+            hmmd_cell = np.append(hmmd_cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.int16),axis=2)
+            
+        quantize_HMMD = cl.Kernel(self.program, "quantize_HMMD")
         self.allocate_buffers()
         cl.enqueue_copy(mgr.queue,self.hmmd_buffer,hmmd_cell,origin=(0,0),region=mgr.cell_shape)
         evt = quantize_HMMD(mgr.queue,mgr.cell_shape, self.hmmd_group_dims,
@@ -266,8 +303,10 @@ class CSDescriptorExtractor:
         return out
     
     def convert_cell_to_HMMD(self,cell):
-        convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
         mgr = self.manager
+        output3channels = False;
+        #TODO: make accept 3-channel cell
+        convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
         self.allocate_buffers()
         self.source_image_map.write(cell)
         evt = convert_to_HMMD(mgr.queue, mgr.cell_shape, self.hmmd_group_dims, 

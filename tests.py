@@ -67,11 +67,9 @@ class Test(unittest.TestCase):
     def test_quantization(self):
         cell = Test.cell
         extr = Test.extr
-        mgr = Test.mgr
         hmmd_cell = mp7.convert_RGB2HMMD(cell)
-        hmmd_cell4 = np.append(hmmd_cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint16),axis=2)
         #res_py = cs.quantize_HMMD(hmmd_cell)
-        res_cl = extr.quantize_HMMD_cell(hmmd_cell4)
+        res_cl = extr.quantize_HMMD_cell(hmmd_cell)
         res_c = mp7.quantize_HMMD(hmmd_cell)
         self.assertTrue(np.array_equal(res_cl,res_c),"HMMD quantization mismatch")
         

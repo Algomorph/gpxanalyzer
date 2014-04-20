@@ -253,7 +253,7 @@ Best guess for maximum concurrent execution paths: {6:0d}"""\
             
         # determine size of OpenCL buffers
         # best guess for used VRAM
-        avail_mem = dev.estimate_available_cl_device_memory(device, verbose=verbose > 0)
+        avail_mem = dev.estimate_available_cl_device_memory(device, verbose=verbose)
         
         #>>In this code, all the tiles for the OpenCL device are referred to as "cells"
         #>>The tiles loaded into memory are still called "tiles"

@@ -322,8 +322,8 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	// Quantize the Hue component
 	int Hindex = (int) ((H / 360.0f) * nHueLevels[iSub]);
 	//TODO: swap 0 and 360 in HMMD conversion or just subtract 1 instead of doing the check
-	if (H == 360)
-		Hindex = 0;
+	if (H == 360.0f)
+		Hindex = 0.0f;
 
 	short curDiffThresh = diffThresh[iSub];
 	uchar curSumLevel = nSumLevels[iSub];
@@ -333,6 +333,7 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	int Sindex = (int)(((float)S - 0.5f * curDiffThresh)
 						* curSumLevel
 						/ (255.0f - curDiffThresh));
+
 	if (Sindex >= curSumLevel)
 		Sindex = curSumLevel - 1;
 
@@ -345,10 +346,13 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	return nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
 }
 
+/**
+ * Quantize the whole HMMD image
+ */
 __kernel
 void quantize_HMMD(__read_only image2d_t input, __write_only image2d_t output,
 __constant short* diffThresh, __constant uchar* nHueLevels,
-		__constant uchar* nSumLevels, __constant uchar* nCumLevels) {
+		__constant uchar* nSumLevels, __constant uchar* nCumLevels){
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
 	int2 dims = get_image_dim(input);
@@ -357,7 +361,7 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	}
 	int2 coord = (int2) (x, y);
 	int4 px = read_imagei(input, sampler, coord);
-	int result = quantizeHMMDPixel(px,diffThresh,nHueLevels,nSumLevels,nCumLevels);
+	int result = quantizeHMMDPixel(px, diffThresh, nHueLevels,nSumLevels,nCumLevels);
 	write_imageui(output,coord,result);
 }
 
@@ -458,43 +462,49 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 
 __kernel
 void csDescriptorWindowBitstringsCache(__read_only image2d_t input, __write_only image2d_t output){
-	//transpose thread directions
+	//transpose thread directions (x refers to horizontal direction in original image)
 	size_t x = get_global_id(0);
 	int2 dims = get_image_dim(input);
-	if(x >= dims.x){
+	if(x >= dims.y){
 		return;
 	}
+	size_t x_lower = x << 1;
+	size_t x_upper = x_lower + 1;
 	uint4 aggLower = (uint4)(0,0,0,0);
 	uint4 aggUpper = (uint4)(0,0,0,0);
 	uint4 upper, lower;
-	uint4 bitCache[16];
+	uint4 lBitCache[WINSIZE];
+	uint4 uBitCache[WINSIZE];
+	int cacheIns;
 #pragma unroll
-	for(int y = 0; y < (WINSIZE<<1); y+=2){
-		lower = read_imageui(input,sampler,(int2) (x, y));
-		upper =  read_imageui(input,sampler,(int2) (x, y+1));
-		bitCache[y] = lower;
-		bitCache[y+1] = upper;
+	for(int y = 0; y < WINSIZE; y++){
+		lower = read_imageui(input,sampler,(int2) (y, x_lower));
+		upper = read_imageui(input,sampler,(int2) (y, x_upper));
+		lBitCache[y] = lower;
+		uBitCache[y] = upper;
 		aggLower |= lower;
 		aggUpper |= upper;
 	}
 	//write the first bitstring
 	write_imageui(output,(int2)(x,0),aggLower);
 	write_imageui(output,(int2)(x,1),aggUpper);
-	int cacheIns;
 
-//#pragma unroll
-	for(int y = (WINSIZE<<1); y < dims.y; y+=2){
+	int yIns = 1;
+
+#pragma unroll
+	for(int y = WINSIZE; y < dims.x; y++,yIns++){
 		aggLower = (uint4)(0,0,0,0);
 		aggUpper = (uint4)(0,0,0,0);
-		cacheIns = (y%16);
-		bitCache[cacheIns] = read_imageui(input,sampler,(int2) (x, y));
-		bitCache[cacheIns+1] = read_imageui(input,sampler,(int2) (x, y));
-		for(int row = 0; row < 16; row +=2){
-			aggLower |= bitCache[row];
-			aggUpper |= bitCache[row+1];
+		cacheIns = y%WINSIZE;
+		lBitCache[cacheIns] = read_imageui(input,sampler,(int2) (y, x_lower));
+		uBitCache[cacheIns] = read_imageui(input,sampler,(int2) (y, x_upper));
+
+		for(int row = 0; row < WINSIZE; row ++){
+			aggLower |= lBitCache[row];
+			aggUpper |= uBitCache[row];
 		}
-		write_imageui(output,(int2)(x,y),aggLower);
-		write_imageui(output,(int2)(x,y+1),aggUpper);
+		write_imageui(output,(int2)(yIns,x_lower),aggLower);
+		write_imageui(output,(int2)(yIns,x_upper),aggUpper);
 	}
 }
 
@@ -503,22 +513,25 @@ void csDescriptorWindowBitstringsBrute(__read_only image2d_t input, __write_only
 	//transpose thread directions
 	size_t x = get_global_id(0);
 	int2 dims = get_image_dim(input);
-	if(x >= dims.x){
+	if(x >= dims.y){
 		return;
 	}
+	size_t x_lower = x << 1;
+	size_t x_upper = x_lower + 1;
 	uint4 aggLower, aggUpper;
-	int gStopAt = dims.y - (WINSIZE<<1) + 2;
+	int gStopAt = dims.x - WINSIZE;
+	//gStopAt = 4;
 #pragma unroll
-	for(int yg = 0; yg < gStopAt; yg+=2){
-		int stopAt = yg+(WINSIZE<<1);
+	for(int yg = 0; yg <= gStopAt; yg++){
+		int stopBefore = yg+WINSIZE;
 		aggLower = (uint4)(0,0,0,0);
 		aggUpper = (uint4)(0,0,0,0);
-		for(int y = yg; y < stopAt; y+=2){
-			aggLower |= read_imageui(input,sampler,(int2) (x, y));;
-			aggUpper |=  read_imageui(input,sampler,(int2) (x, y+1));;
+		for(int y = yg; y < stopBefore; y++){
+			aggLower |= read_imageui(input,sampler,(int2) (y, x_lower));
+			aggUpper |= read_imageui(input,sampler,(int2) (y, x_upper));
 		}
-		write_imageui(output,(int2)(x,yg),aggLower);
-		write_imageui(output,(int2)(x,yg+1),aggUpper);
+		write_imageui(output,(int2)(yg,x_lower),aggLower);
+		write_imageui(output,(int2)(yg,x_upper),aggUpper);
 	}
 }
 
