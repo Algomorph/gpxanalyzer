@@ -84,20 +84,30 @@ class Test(unittest.TestCase):
         output = cl.Image(mgr.context,cl.mem_flags.READ_WRITE,
                           cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.UNSIGNED_INT32),
                           shape = (mgr.cell_width, mgr.cell_height*2))
+        
         res_brute = np.zeros((mgr.cell_height*2,mgr.cell_width,4),dtype=np.uint32)
         res_cache = np.zeros_like(res_brute)
+        res0 = np.zeros_like(res_brute)
+        rowbits_cl = np.zeros_like(res_brute)
         
+        cl_evt = cl.enqueue_copy(mgr.queue, output, res0, origin = (0,0), region = output.shape)
         up_evt = cl.enqueue_copy(mgr.queue,qb,quant,origin = (0,0), region = mgr.cell_shape)
         
         ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
+        dl_rowbits_evt = cl.enqueue_copy(mgr.queue,rowbits_cl, output, origin = (0,0), region = output.shape)
+        rowbits_py = cs.extract_row_bitstrings(quant)
+        self.assertTrue(np.array_equal(rowbits_py, rowbits_cl))
+        
         ex2_evt = extr.program.csDescriptorWindowBitstringsBrute(mgr.queue,(mgr.cell_width,),(32,), output, output, wait_for=[ex1_evt])
         dl_evt = cl.enqueue_copy(mgr.queue, res_brute, output, origin = (0,0), region = output.shape, wait_for = [ex2_evt])
+        res_py = cs.extract_window_bitstrings(rowbits_py)
+        self.assertTrue(np.array_equal(res_brute[:,0:249], res_py[:,0:249]))
         
         ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
         ex2_evt = extr.program.csDescriptorWindowBitstringsCache(mgr.queue,(mgr.cell_width,),(32,), output, output, wait_for=[ex1_evt])
         dl_evt = cl.enqueue_copy(mgr.queue, res_cache, output, origin = (0,0), region = output.shape, wait_for = [ex2_evt])
         
-        self.assertTrue(np.array_equal(res_brute, res_cache))
+        self.assertTrue(np.array_equal(res_brute[:,0:249], res_cache[:,0:249]))
         
     
     def tearDown(self):

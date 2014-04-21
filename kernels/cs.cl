@@ -422,7 +422,7 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 	if(y >= dims.y){
 		return;
 	}
-	//uint slideHist[256] = {0};
+	uchar slideHist[256] = {0};
 	uint bitstring[8] = {0};
 	//TODO: try to spead up by caching the reads, or using local memory to store intermediate result?
 	//uint cache[8];
@@ -438,18 +438,22 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 		idxUint = bin >> 5;
 		idxBit = bin - (idxUint << 5);
 		bitstring[idxUint] |= (1 << idxBit);
+		slideHist[bin]++;
 	}
 	write_imageui(output,(int2)(y,0),(uint4)(bitstring[0],bitstring[1],bitstring[2],bitstring[3]));
 	write_imageui(output,(int2)(y,1),(uint4)(bitstring[4],bitstring[5],bitstring[6],bitstring[7]));
 	int x = 0;
 	int ixOut;
 #pragma unroll
-	for(xProbe = 8; xProbe < dims.x; xProbe++){
+	for(xProbe = WINSIZE; xProbe < dims.x; xProbe++){
 		bin = read_imageui(input,sampler,(int2) (x, y)).x;
-		idxUint = bin >> 5; //same as division by 32
-		idxBit = bin - (idxUint << 5);//same as modulo division by 32
-		bitstring[idxUint] &= ~(1 << idxBit);
+		if(!(--slideHist[bin])){
+			idxUint = bin >> 5; //same as division by 32
+			idxBit = bin - (idxUint << 5);//same as modulo division by 32
+			bitstring[idxUint] &= ~(1 << idxBit);
+		}
 		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
+		slideHist[bin]++;
 		idxUint = bin >> 5; //same as division by 32
 		idxBit = bin - (idxUint << 5);//same as modulo division by 32
 		bitstring[idxUint] |= (1 << idxBit);
@@ -460,6 +464,9 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 	}
 }
 
+/**
+ * Speedup: 20%, TODO - figure out the bug
+ */
 __kernel
 void csDescriptorWindowBitstringsCache(__read_only image2d_t input, __write_only image2d_t output){
 	//transpose thread directions (x refers to horizontal direction in original image)

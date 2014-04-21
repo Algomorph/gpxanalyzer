@@ -102,11 +102,12 @@ def agg_bitstrings(bitstring_arr):
 def extract_window_bitstrings(row_bitstrings):
     bitstrings = np.zeros_like(row_bitstrings)
     for ix_row in xrange(0,row_bitstrings.shape[0],2):
-        for ix_col in xrange(0,row_bitstrings.shape[1]):
+        for ix_col in xrange(0,row_bitstrings.shape[1]-7):
             chunk = row_bitstrings[ix_row:ix_row+2,ix_col:ix_col+8]
             bitstring = agg_bitstrings(chunk)
             bitstrings[ix_row,ix_col] = bitstring[0:4]
             bitstrings[ix_row+1,ix_col] = bitstring[4:8]
+    return bitstrings
         
 
 def bitstring_vals(bitstring_arr):
