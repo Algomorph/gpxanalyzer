@@ -9,7 +9,6 @@ RM := rm -rf
 # All of the sources participating in the build are defined here
 -include sources.mk
 -include src/subdir.mk
--include kernels/subdir.mk
 -include subdir.mk
 -include objects.mk
 
@@ -45,22 +44,27 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: libgpxanalyzer.so
+all: gpxanalyzer_internals.so
 
 # Tool invocations
-libgpxanalyzer.so: $(OBJS) $(USER_OBJS)
+gpxanalyzer_internals.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C++ Linker'
-	g++ -L/usr/local/lib -shared -o "libgpxanalyzer.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -shared -o "gpxanalyzer_internals.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
+	$(MAKE) --no-print-directory post-build
 
 # Other Targets
 clean:
-	-$(RM) $(CU_DEPS)$(OBJS)$(C++_DEPS)$(C_DEPS)$(CL_DEPS)$(CC_DEPS)$(LIBRARIES)$(CPP_DEPS)$(CXX_DEPS)$(C_UPPER_DEPS) libgpxanalyzer.so
+	-$(RM) $(CU_DEPS)$(OBJS)$(C++_DEPS)$(C_DEPS)$(CL_DEPS)$(CC_DEPS)$(LIBRARIES)$(CPP_DEPS)$(CXX_DEPS)$(C_UPPER_DEPS) gpxanalyzer_internals.so
+	-@echo ' '
+
+post-build:
+	-cp gpxanalyzer_internals.so  ../gpxanalyzer/
 	-@echo ' '
 
 .PHONY: all clean dependents
-.SECONDARY:
+.SECONDARY: post-build
 
 -include ../makefile.targets

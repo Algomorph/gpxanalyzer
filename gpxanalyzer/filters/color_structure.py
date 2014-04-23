@@ -249,12 +249,22 @@ class CSDescriptorExtractor:
         self.recompile()
         
         
-        self.hmmd_group_dims = (32, 4)
+        self.pixelwise_group_dims = (mgr.warp_size, 4)
         self.hist_global_dims =(mgr.cell_width / subsample,)
         self.hist_group_dims = (self.group_width,)
         
-        self.buffers_allocated = False
-        self.descr_buff = None
+        #buffers - all set to None
+        self.source_image_map = None
+        self.hmmd_buffer = None
+        self.quant_buffer = None
+        self.bitstring_buffer = None
+        self.diff_thresh_buff = None
+        self.sum_levels_buff = None
+        self.hue_levels_buff = None
+        self.cum_levels_buff = None
+        self.buffers = [self.source_image_map, self.hmmd_buffer, self.quant_buffer, self.bitstring_buffer,
+                        self.diff_thresh_buff,self.sum_levels_buff,self.hue_levels_buff,self.cum_levels_buff]
+        
         
     def recompile(self):
         self.program = cl.Program(self.manager.context, 
@@ -264,75 +274,148 @@ class CSDescriptorExtractor:
                                                   self.winsize,self.BASE_QUANT_SPACE,self.group_width,
                                                   self.REGION_SIZE, self.REGION_SIZE / self.group_width, 
                                                   self.BASE_QUANT_SPACE / self.group_width))
-        
-    def allocate_buffers(self):
-        if(not self.buffers_allocated):
-            cl_manager = self.manager
-            self.source_image_map = clm.ImageCLMap(cl_manager, cl.mem_flags.READ_ONLY, cl_manager.image_uint8_format)
-            self.hmmd_buffer = cl.Image(cl_manager.context, cl.mem_flags.READ_WRITE, 
-                                        cl_manager.image_int16_format, cl_manager.cell_shape)
-            self.quant_buffer = cl.Image(cl_manager.context, cl.mem_flags.READ_WRITE,
-                                         cl.ImageFormat(cl.channel_order.R, cl.channel_type.UNSIGNED_INT8),
-                                         cl_manager.cell_shape)
+#############CL BUFFER/IMAGE ALLOCATIONS################################################################################
+    def __alloc_hmmd_buffer(self):
+        if(self.hmmd_buffer is None):
+            mgr = self.manager
+            self.hmmd_buffer = cl.Image(mgr.context, cl.mem_flags.READ_WRITE, 
+                                        mgr.image_int16_format, mgr.cell_shape)
+            
+    def __alloc_thresholds(self):
+        if(self.diff_thresh_buff is None):
             idx = self.quant_index
-            self.diff_thresh_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+            mgr = self.manager
+            self.diff_thresh_buff = cl.Buffer(mgr.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
                                           hostbuf=difference_thresholds[idx])
-            self.hue_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+            self.hue_levels_buff = cl.Buffer(mgr.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
                                           hostbuf=n_hue_levels[idx])
-            self.sum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+            self.sum_levels_buff = cl.Buffer(mgr.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
                                           hostbuf= n_sum_levels[idx])
-            self.cum_levels_buff = cl.Buffer(cl_manager.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                          hostbuf= n_cum_levels[idx])
-            self.buffers_allocated = True
+            self.cum_levels_buff = cl.Buffer(mgr.context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                             hostbuf= n_cum_levels[idx])
     
+    def __alloc_bitstring_buffer(self):
+        if(self.bitstring_buffer is None):
+            mgr = self.manager
+            self.bitstring_buffer = cl.Image(mgr.context,cl.mem_flags.READ_WRITE,
+                          cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.UNSIGNED_INT32),
+                          shape = (mgr.cell_width, mgr.cell_height*2))
+        
+        
+    def __alloc_source_map(self):
+        if(self.source_image_map is None):
+            mgr = self.manager
+            self.source_image_map = clm.ImageCLMap(mgr, cl.mem_flags.READ_ONLY, mgr.image_uint8_format)
+           
+           
+    def __alloc_quant_buffer(self):
+        if(self.quant_buffer is None):
+            mgr = self.manager
+            self.quant_buffer = cl.Image(mgr.context, cl.mem_flags.READ_WRITE,
+                                         cl.ImageFormat(cl.channel_order.R, cl.channel_type.UNSIGNED_INT8),
+                                         mgr.cell_shape)
+########################################################################################################################    
     def release(self):
-        if(self.buffers_allocated):
-            self.hmmd_buffer.release()
-            self.source_image_map.release()
-            self.buffers_allocated = False
-        if(self.descr_buff is not None):
-            self.descr_buff.release()
+        for buffer in self.buffers:
+            if buffer is not None:
+                buffer.release()
+                
     
     def __del__(self):
         self.release()
-        
-    def extract_base_level(self,quant_cell):
-        self.allocate_buffers()
+############################SUBROUTINES#################################################################################
+    def __convert_to_HMMD_no_check(self,cell):
         mgr = self.manager
-        if(self.descr_buff is None):
-            num_descriptors = (self.manager.cell_width  / self.group_width) * (self.manager.cell_height  / self.REGION_SIZE)
-            self.descr_buff = cl.Buffer(mgr.context,cl.mem_flags.WRITE_ONLY,size=num_descriptors*self.BASE_QUANT_SPACE*4)
-        cl.enqueue_copy(mgr.queue,self.quant_buffer,quant_cell,origin=(0,0),region=mgr.cell_shape)
-        cs_descriptors_stage1 = cl.Kernel(self.program, "cs_descriptors_stage1")
-    
-    def quantize_HMMD_cell(self,hmmd_cell):
-        mgr = self.manager
+        #TODO: make accept 3-channel cell
+        if(cell.shape[2] == 3 and not mgr.supports_3channel_images):
+            cell = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
+        convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
         
-        if(hmmd_cell.shape[2] == 3):
+        self.source_image_map.write(cell)
+        evt = convert_to_HMMD(mgr.queue, mgr.cell_shape, self.pixelwise_group_dims, 
+                                    self.source_image_map.image_dev, self.hmmd_buffer)
+        out = np.zeros(cell.shape,dtype=np.int16)
+        cl.enqueue_copy(mgr.queue, out, self.hmmd_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
+        return out
+        
+    def convert_to_HMMD(self,cell):
+        self.__alloc_source_map()
+        self.__alloc_hmmd_buffer()
+        self.convert_to_HMMD = self.__convert_to_HMMD_no_check
+        return self.__convert_to_HMMD_no_check(cell)
+        
+    def __quantize_HMMD_no_check(self,hmmd_cell):
+        mgr = self.manager
+        if(hmmd_cell.shape[2] == 3 and not mgr.supports_3channel_images):
             hmmd_cell = np.append(hmmd_cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.int16),axis=2)
             
         quantize_HMMD = cl.Kernel(self.program, "quantize_HMMD")
-        self.allocate_buffers()
         cl.enqueue_copy(mgr.queue,self.hmmd_buffer,hmmd_cell,origin=(0,0),region=mgr.cell_shape)
-        evt = quantize_HMMD(mgr.queue,mgr.cell_shape, self.hmmd_group_dims,
+        evt = quantize_HMMD(mgr.queue,mgr.cell_shape, self.pixelwise_group_dims,
                               self.hmmd_buffer,self.quant_buffer,self.diff_thresh_buff,
                               self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)
         out = np.zeros(mgr.cell_shape,dtype=np.uint8)
         cl.enqueue_copy(mgr.queue, out, self.quant_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
         return out
     
-    def convert_cell_to_HMMD(self,cell):
+    def quantize_HMMD(self,hmmd_cell):
+        self.__alloc_hmmd_buffer()
+        self.__alloc_quant_buffer()
+        self.__alloc_thresholds()
+        self.quantize_HMMD = self.__quantize_HMMD_no_check
+        return self.__quantize_HMMD_no_check(hmmd_cell)
+    
+    def __quantize_no_check(self,cell):
         mgr = self.manager
-        output3channels = False;
-        #TODO: make accept 3-channel cell
-        convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
-        self.allocate_buffers()
+        if(cell.shape[2] == 3 and not mgr.supports_3channel_images):
+            cell = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
+        imageToHMMDQuants = cl.Kernel(self.program, "imageToHMMDQuants")
         self.source_image_map.write(cell)
-        evt = convert_to_HMMD(mgr.queue, mgr.cell_shape, self.hmmd_group_dims, 
-                                    self.source_image_map.image_dev, self.hmmd_buffer)
-        out = np.zeros(cell.shape,dtype=np.int16)
-        cl.enqueue_copy(mgr.queue, out, self.hmmd_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
+        evt = imageToHMMDQuants(mgr.queue,mgr.cell_shape, self.pixelwise_group_dims,
+                              self.source_image_map.image_dev,self.quant_buffer,self.diff_thresh_buff,
+                              self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)
+        out = np.zeros(mgr.cell_shape,dtype=np.uint8)
+        cl.enqueue_copy(mgr.queue, out, self.quant_buffer, origin = (0,0), region = mgr.cell_shape, wait_for = [evt])
         return out
+        
+    def quantize(self,cell):
+        self.__alloc_source_map()
+        self.__alloc_quant_buffer()
+        self.__alloc_thresholds()
+        self.quantize = self.__quantize_no_check
+        return self.__quantize_no_check(cell)
+    
+    def __extract_bitstrings_no_check(self,cell):
+        mgr = self.manager
+        if(cell.shape[2] == 3 and not mgr.supports_3channel_images):
+            cell = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
+        imageToHMMDQuants = cl.Kernel(self.program, "imageToHMMDQuants")
+        csDescriptorRowBitstrings = cl.Kernel(self.program, "csDescriptorRowBitstrings")
+        csDescriptorWindowBitstrings = cl.Kernel(self.program, "csDescriptorWindowBitstringsBrute")
+        
+        up_evt = self.source_image_map.write(cell)
+        evt1 = imageToHMMDQuants(mgr.queue,mgr.cell_shape, self.pixelwise_group_dims,
+                              self.source_image_map.image_dev,self.quant_buffer,self.diff_thresh_buff,
+                              self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff, wait_for = [up_evt])
+        evt2 = csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(mgr.warp_size,),self.quant_buffer, 
+                                         self.bitstring_buffer, wait_for=[evt1])
+        evt3 = csDescriptorWindowBitstrings(mgr.queue,(mgr.cell_height,),(mgr.warp_size,),self.bitstring_buffer, 
+                                            self.bitstring_buffer, wait_for=[evt2])
+        out = np.zeros((mgr.cell_height*2,mgr.cell_width,4),dtype=np.uint32)
+        dl_evt = cl.enqueue_copy(mgr.queue, out, self.bitstring_buffer, origin = (0,0), 
+                                 region = self.bitstring_buffer.shape, wait_for = [evt3])
+        return out
+        
+    
+    def extract_bitstrings(self,cell):
+        self.__alloc_source_map()
+        self.__alloc_quant_buffer()
+        self.__alloc_thresholds()
+        self.__alloc_bitstring_buffer()
+        self.extract_bitstrings=self.__extract_bitstrings_no_check
+        return self.__extract_bitstrings_no_check(cell)
+########################################################################################################################
+
 
     def extract(self, tile, length):
         self.allocate_buffers()
@@ -345,9 +428,9 @@ class CSDescriptorExtractor:
             for x_end in xrange(mgr.cell_width, tile.shape[1] + 1, mgr.cell_width):
                 cell = tile[y_start:y_end, x_start:x_end, :]
                 self.source_image_map.write(cell)
-                convert_to_HMMD(mgr.queue, mgr.cell_shape, self.hmmd_group_dims, 
+                convert_to_HMMD(mgr.queue, mgr.cell_shape, self.pixelwise_group_dims, 
                                 self.source_image_map.image_dev, self.hmmd_buffer)
-                quantize_HMMD(mgr.queue,mgr.cell_shape, self.hmmd_group_dims,
+                quantize_HMMD(mgr.queue,mgr.cell_shape, self.pixelwise_group_dims,
                               self.hmmd_buffer,self.quant_buffer,self.diff_thresh_buff,
                               self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)    
                 

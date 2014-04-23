@@ -4,5 +4,5 @@
 
 USER_OBJS :=
 
-LIBS := -lopencv_core -lpython2.7 -lOpenCL
+LIBS := -lpython2.7 -lboost_python -lOpenCL
 

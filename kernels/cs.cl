@@ -146,25 +146,7 @@ int4 convertPixelToHMMD(int R, int G, int B){
 	return (int4)((int) (hue + 0.5f),(a + 1) >> 1,D,0);
 }
 
-__kernel
-void convert_to_HMMD(__read_only image2d_t image,
-		__write_only image2d_t output) {
-	size_t x = get_global_id(0);
-	size_t y = get_global_id(1);
-	int2 dims = get_image_dim(image);
-	if (x >= dims.x || y >= dims.y) {
-		return;
-	}
-	int2 coord = (int2) (x, y);
-	int4 px = read_imagei(image, sampler, coord);
-	float hue;
-	int R, G, B, a, d, H, S, D;
-	R = px.x;
-	G = px.y;
-	B = px.z;
-	int4 out = convertPixelToHMMD(R,G,B);
-	write_imagei(output, coord, out);
-}
+
 
 /**
  * Determines the quant/level for the given HMMD pixel according to the provided thresholds
@@ -218,6 +200,24 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 
 	return nCumLevels[iSub] + Hindex * curSumLevel + Sindex;
 }
+__kernel
+void convert_to_HMMD(__read_only image2d_t image,
+		__write_only image2d_t output) {
+	size_t x = get_global_id(0);
+	size_t y = get_global_id(1);
+	int2 dims = get_image_dim(image);
+	if (x >= dims.x || y >= dims.y) {
+		return;
+	}
+	int2 coord = (int2) (x, y);
+	int4 px = read_imagei(image, sampler, coord);
+	int R, G, B;
+	R = px.x;
+	G = px.y;
+	B = px.z;
+	int4 out = convertPixelToHMMD(R,G,B);
+	write_imagei(output, coord, out);
+}
 
 /**
  * Quantize the whole HMMD image
@@ -238,9 +238,11 @@ __constant short* diffThresh, __constant uchar* nHueLevels,
 	write_imageui(output,coord,result);
 }
 
+
 __kernel
-void convert_to_hmmd_and_quantize(__read_only image2d_t image,
-		__write_only image2d_t output, __constant short* diffThresh, __constant uchar* nHueLevels,
+void imageToHMMDQuants(__read_only image2d_t image,
+		__write_only image2d_t output,
+		__constant short* diffThresh, __constant uchar* nHueLevels,
 		__constant uchar* nSumLevels, __constant uchar* nCumLevels){
 	size_t x = get_global_id(0);
 	size_t y = get_global_id(1);
@@ -250,15 +252,15 @@ void convert_to_hmmd_and_quantize(__read_only image2d_t image,
 	}
 	int2 coord = (int2) (x, y);
 	int4 px = read_imagei(image, sampler, coord);
-	float hue;
-	int R, G, B, a, d, H, S, D;
+	int R, G, B;
 	R = px.x;
 	G = px.y;
 	B = px.z;
 	int4 hmmd = convertPixelToHMMD(R,G,B);
-	int result = quantizeHMMDPixel(px, diffThresh, nHueLevels,nSumLevels,nCumLevels);
+	int result = quantizeHMMDPixel(hmmd, diffThresh, nHueLevels,nSumLevels,nCumLevels);
 	write_imageui(output,coord,result);
 }
+
 /**
  * Faster (Image rather than buffer) version
  * reads histograms for each window-length string starting with every pixel of every row and spanning horizontally
@@ -313,7 +315,6 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 		write_imageui(output,(int2)(y,ixOut+1),(uint4)(bitstring[4],bitstring[5],bitstring[6],bitstring[7]));
 	}
 }
-
 
 /**
  * Speedup: 20% over brute-force, TODO - figure out the bug, result doesn't completely match the brute-force version
@@ -393,6 +394,7 @@ void csDescriptorWindowBitstringsBrute(__read_only image2d_t input, __write_only
 	}
 }
 
+
 void bitstringToHist(ushort* slideHist,uint4 lower,uint4 upper){
 	for (int ixBit = 0; ixBit < 32; ixBit++){
 		slideHist[ixBit] += (lower.x >> ixBit) & 1;
@@ -420,6 +422,9 @@ void bitstringToHist(ushort* slideHist,uint4 lower,uint4 upper){
 	}
 }
 
+
+
+
 __kernel
 void csDescriptorsBrute(__read_only image2d_t input, __global ushort* output){
 	//y direction of input, x coordinate of the upper-left corner of the region in original image
@@ -432,7 +437,7 @@ void csDescriptorsBrute(__read_only image2d_t input, __global ushort* output){
 	ushort slideHist[256] = {0};
 	int xStartWidth = x_region << 1;
 	int xStopAt = (x_region + CUTOFF_RS) << 1;
-	ushort* histAt = output + x_region * width;
+	__global ushort* histAt = output + x_region * width;
 
 	for(int y = 0; y < CUTOFF_RS; y++){
 		for(int x = xStartWidth; x < xStopAt; x+=2){
@@ -444,4 +449,6 @@ void csDescriptorsBrute(__read_only image2d_t input, __global ushort* output){
 	}
 
 }
+
+
 

@@ -60,7 +60,7 @@ class Test(unittest.TestCase):
         
         cell4 = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
         ex = Test.extr
-        res_cl = ex.convert_cell_to_HMMD(cell4)[:,:,0:3]
+        res_cl = ex.convert_to_HMMD(cell4)[:,:,0:3]
             
         self.assertTrue(np.array_equal(res_cl[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
         self.assertTrue(np.array_equal(res_cl[:,:,1], res_c[:,:,1]), "S channel in hmmd converstions doesn't match")
@@ -71,7 +71,7 @@ class Test(unittest.TestCase):
         extr = Test.extr
         hmmd_cell = mp7.convert_RGB2HMMD(cell)
         #res_py = cs.quantize_HMMD(hmmd_cell)
-        res_cl = extr.quantize_HMMD_cell(hmmd_cell)
+        res_cl = extr.quantize_HMMD(hmmd_cell)
         res_c = mp7.quantize_HMMD(hmmd_cell)
         self.assertTrue(np.array_equal(res_cl,res_c),"HMMD quantization mismatch")
         
@@ -93,7 +93,7 @@ class Test(unittest.TestCase):
         rowbits_cl = np.zeros_like(res_brute)
         
         cl_evt = cl.enqueue_copy(mgr.queue, output, res0, origin = (0,0), region = output.shape)
-        up_evt = cl.enqueue_copy(mgr.queue,qb,quant,origin = (0,0), region = mgr.cell_shape)
+        up_evt = cl.enqueue_copy(mgr.queue,qb,quant,origin = (0,0), region = qb.shape)
         
         ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
         dl_rowbits_evt = cl.enqueue_copy(mgr.queue,rowbits_cl, output, origin = (0,0), region = output.shape)

@@ -14,7 +14,7 @@ import gpxanalyzer.utils.image_size as img_sz
 import numpy as np
 from gpxanalyzer.utils.enum  import enum
 
-map_type = enum(READ="READ",WRITE="WRITE")
+map_type = enum(READ="READ",WRITE="WRITE",READ_WRITE="READ_WRITE")
 np_type_by_channel_type = {cl.channel_type.UNSIGNED_INT8: np.uint8,
                            cl.channel_type.SIGNED_INT16: np.int16
                            }
@@ -27,13 +27,15 @@ class ImageCLMap:
     def __init__(self,cl_manager,mem_flags,image_format,wait_for = None,is_blocking = True):
         self.manager = cl_manager
         self.released = False;
-        #TODO add support for READ_WRITE images
-        if(mem_flags == (mem_flags & cl.mem_flags.READ_ONLY)):
+        if(mem_flags == (mem_flags | cl.mem_flags.READ_ONLY)):
             map_flags = cl.map_flags.WRITE_INVALIDATE_REGION
             self.type = map_type.WRITE
-        elif(mem_flags == (mem_flags & cl.mem_flags.WRITE_ONLY)):
+        elif(mem_flags == (mem_flags | cl.mem_flags.WRITE_ONLY)):
             map_flags = cl.map_flags.READ
             self.type = map_type.READ
+        elif(mem_flags == (mem_flags | cl.mem_flags.READ_WRITE)):
+            map_flags = cl.map_flags.READ | cl.map_flags.WRITE_INVALIDATE_REGION
+            self.type = map_type.READ_WRITE
         else:
             raise ValueError("Unsupported mem_flags: {0:d}".format(mem_flags ))
         
@@ -53,8 +55,12 @@ class ImageCLMap:
         self.map_event = res[1]
         if(self.type == map_type.READ):
             self.read = self.__read
-        else:
+        elif(self.type == map_type.WRITE):
             self.write = self.__write
+        else:
+            self.read = self.__read
+            self.write = self.__write
+            
 
     def release(self):
         if(not self.released):
@@ -68,13 +74,14 @@ class ImageCLMap:
         
     def __write(self,array, wait_for = None, is_blocking = True):
         np.copyto(self.array,array)
-        cl.enqueue_copy(self.manager.queue, self.image_dev,self.array,origin = (0,0), region=self.manager.cell_shape,
+        return cl.enqueue_copy(self.manager.queue, self.image_dev,self.array,origin = (0,0), region=self.manager.cell_shape,
                         wait_for = wait_for, is_blocking = is_blocking)
     
     def __read(self,array,wait_for = None, is_blocking = True):
-        cl.enqueue_copy(self.manager.queue, self.array,self.image_dev,origin = (0,0),region=self.manager.cell_shape,
+        evt = cl.enqueue_copy(self.manager.queue, self.array,self.image_dev,origin = (0,0),region=self.manager.cell_shape,
                         wait_for = wait_for, is_blocking = is_blocking)
         np.copyto(array,self.array)
+        return evt
         
 
 class FilterCLManager(object):
@@ -86,7 +93,8 @@ class FilterCLManager(object):
     """
     def __init__(self, tile_shape, cell_shape, warp_size, max_threads, context, queue, 
                  image_uint8_format = cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.UNSIGNED_INT8),
-                 image_int16_format = cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.SIGNED_INT16)):
+                 image_int16_format = cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.SIGNED_INT16),
+                 image_uint32_format = cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.UNSIGNED_INT32)):
         """
         @param warp_size: number of threads/work items that can be synchronously launched by a block/work group at any given moment.
         @param max_threads: maximum number of threads / concurrent execution paths
@@ -118,6 +126,10 @@ class FilterCLManager(object):
         
         self.image_uint8_format = image_uint8_format
         self.image_int16_format = image_int16_format
+        if(image_uint8_format.channel_count == 3):
+            self.supports_3channel_images = True
+        else:
+            self.supports_3channel_images = False
         
         
     @property
@@ -161,6 +173,7 @@ class FilterCLManager(object):
         supported_formats = cl.get_supported_image_formats(context,cl.mem_flags.READ_WRITE,cl.mem_object_type.IMAGE2D)
         picked_uint8_format = None
         picked_int16_format = None
+        picked_uint32_format = None
         for image_format in supported_formats:
             try:
                 if(image_format.channel_data_type == cl.channel_type.UNSIGNED_INT8):
@@ -173,9 +186,14 @@ class FilterCLManager(object):
                         picked_int16_format = image_format #ideal
                     elif(picked_int16_format is None and image_format.channel_order == cl.channel_order.RGBA):
                         picked_int16_format = image_format #non-ideal, but acceptable
+                elif(image_format.channel_data_type == cl.channel_type.UNSIGNED_INT32):
+                    if(image_format.channel_order == cl.channel_order.RGB):
+                        picked_uint32_format = image_format #ideal
+                    elif(picked_uint32_format is None and image_format.channel_order == cl.channel_order.RGBA):
+                        picked_uint32_format = image_format #non-ideal, but acceptable
             except cl.LogicError:
                 continue
-        return picked_uint8_format, picked_int16_format
+        return picked_uint8_format, picked_int16_format, picked_uint32_format
     
     @staticmethod
     def generate(device, tile_shape, tile_dir = None, cell_shape = None, verbose = False):
@@ -230,7 +248,7 @@ class FilterCLManager(object):
         num_sms = device.get_info(cl.device_info.MAX_COMPUTE_UNITS)
         determine_n_processors_per_sm = dev.determine_n_processors_per_sm(device)
         max_threads = determine_n_processors_per_sm * num_sms
-        image_uint8_format, image_uint16_format = FilterCLManager.__determine_image_types(context)
+        image_uint8_format, image_uint16_format, image_uint32_format = FilterCLManager.__determine_image_types(context)
         
         # retrieve warp/wavefront size (or # of hardware threads in case of CPU)
         warp_size = dev.determine_warp_size(device, context)
@@ -269,7 +287,7 @@ Best guess for maximum concurrent execution paths: {6:0d}"""\
             
             
         return FilterCLManager(tile_shape, cell_shape, warp_size, max_threads, context, 
-                            cl.CommandQueue(context), image_uint8_format, image_uint16_format)
+                            cl.CommandQueue(context), image_uint8_format, image_uint16_format, image_uint32_format)
             
         
     def __str_helper(self, const_name, value):
