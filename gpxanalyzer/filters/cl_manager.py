@@ -126,6 +126,7 @@ class FilterCLManager(object):
         
         self.image_uint8_format = image_uint8_format
         self.image_int16_format = image_int16_format
+        self.image_uint32_format = image_uint32_format
         if(image_uint8_format.channel_count == 3):
             self.supports_3channel_images = True
         else:

@@ -13,6 +13,7 @@ import numpy as np
 import pyopencl as cl
 import gpxanalyzer.utils.system as system
 import libMPEG7 as mp7
+import gpxanalyzer.gpxanalyzer_internals as gi
 
 
 class Test(unittest.TestCase):
@@ -74,6 +75,8 @@ class Test(unittest.TestCase):
         res_cl = extr.quantize_HMMD(hmmd_cell)
         res_c = mp7.quantize_HMMD(hmmd_cell)
         self.assertTrue(np.array_equal(res_cl,res_c),"HMMD quantization mismatch")
+        res_cl = extr.quantize(cell)
+        self.assertTrue(np.array_equal(res_cl,res_c),"HMMD quantization mismatch")
         
     def test_bitstrings(self):
         cell = Test.cell
@@ -81,7 +84,7 @@ class Test(unittest.TestCase):
         hmmd = mp7.convert_RGB2HMMD(cell)
         quant = mp7.quantize_HMMD(hmmd)
         extr = Test.extr
-        extr.allocate_buffers()
+        extr._CSDescriptorExtractor__alloc_quant_buffer()
         qb = extr.quant_buffer
         output = cl.Image(mgr.context,cl.mem_flags.READ_WRITE,
                           cl.ImageFormat(cl.channel_order.RGBA,cl.channel_type.UNSIGNED_INT32),
@@ -95,15 +98,26 @@ class Test(unittest.TestCase):
         cl_evt = cl.enqueue_copy(mgr.queue, output, res0, origin = (0,0), region = output.shape)
         up_evt = cl.enqueue_copy(mgr.queue,qb,quant,origin = (0,0), region = qb.shape)
         
-        ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
+        ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),
+                                                         qb, output, wait_for=[up_evt])
         dl_rowbits_evt = cl.enqueue_copy(mgr.queue,rowbits_cl, output, origin = (0,0), region = output.shape)
         rowbits_py = cs.extract_row_bitstrings(quant)
         self.assertTrue(np.array_equal(rowbits_py, rowbits_cl))
+        rowbits_cl_extr = extr.extract_rowbits(cell)
+        self.assertTrue(np.array_equal(rowbits_py, rowbits_cl_extr))
         
-        ex2_evt = extr.program.csDescriptorWindowBitstringsBrute(mgr.queue,(mgr.cell_width,),(32,), output, output, wait_for=[ex1_evt])
-        dl_evt = cl.enqueue_copy(mgr.queue, res_brute, output, origin = (0,0), region = output.shape, wait_for = [ex2_evt])
+        ex2_evt = extr.program.csDescriptorWindowBitstringsBrute(mgr.queue,(mgr.cell_width,),(32,), 
+                                                                 output, output, wait_for=[ex1_evt])
+        dl_evt = cl.enqueue_copy(mgr.queue, res_brute, output, origin = (0,0), 
+                                 region = output.shape, wait_for = [ex2_evt])
         res_py = cs.extract_window_bitstrings(rowbits_py)
-        self.assertTrue(np.array_equal(res_brute[:,0:249], res_py[:,0:249]))
+        self.assertTrue(np.array_equal(res_brute[:,0:249], res_py[:,0:249]),
+                        "Result bitstring extraction kernel doesn't match ground truth")
+        
+        res_cl = extr.extract_bitstrings(cell)
+        self.assertTrue(np.array_equal(res_cl[0:249,:], cs.reshape_bitstrings(res_py)[0:249,:]),
+                        "Bitstring extraction doesn't match ground truth")
+        
         
         #TODO: fix bug in cache version and re-enable the tests
 #         ex1_evt = extr.program.csDescriptorRowBitstrings(mgr.queue,(mgr.cell_height,),(32,),qb, output, wait_for=[up_evt])
@@ -111,6 +125,18 @@ class Test(unittest.TestCase):
 #         dl_evt = cl.enqueue_copy(mgr.queue, res_cache, output, origin = (0,0), region = output.shape, wait_for = [ex2_evt])
 #         
 #         self.assertTrue(np.array_equal(res_brute[:,0:249], res_cache[:,0:249]))
+
+    def test_descriptors(self):
+        cell = Test.cell
+        mgr = Test.mgr
+        extr = Test.extr
+        bitstrings = extr.extract_bitstrings(cell)
+        descr = gi.extract_cs_descriptor(bitstrings,0,0,0)
+        descr_py = cs.bitstrings_to_descriptors(bitstrings, 0,0,0) 
+        descr_c = mp7.get_color_structure_descriptor(cell)
+        self.assertTrue(np.array_equal(descr_c, descr_py),
+                         "Pure-Python descriptor extraction doesn't match ground truth")
+        
         
     @classmethod
     def tearDownClass(cls):

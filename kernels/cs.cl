@@ -17,21 +17,13 @@
  */
 #ifdef __CDT_PARSER__
 #include "OpenCLKernel.hpp"
+#define WINDOW_SIZE 8
+#define REGION_SIZE 256
+#define REGION_CLIP 249
 #define BASE_QUANT_SPACE 256
-#define GROUP_WIDTH 8
-#define REGION_WIDTH 256
-#define REGION_GROUP_COUNT 32 //REGION_WIDTH / GROUP_WIDTH
-#define ITEMS_PER_QUANT_DESCR 32 //BASE_QUANT_SPACE / GROUP_WIDTH
-#define REGION_HEIGHT 256
-#define CUTOFF_WIDTH 249
-#define CUTOFF_HEIGHT 249
-#define SUBSAMPLE 3
-#define WINSIZE 8
 #endif
 
-#define WINSIZE 8
-#define REGION_SIZE 256
-#define CUTOFF_RS 249
+
 
 __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE
 		| CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
@@ -274,7 +266,7 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 	if(y >= dims.y){
 		return;
 	}
-	uchar slideHist[256] = {0};
+	uchar slideHist[BASE_QUANT_SPACE] = {0};
 	uint bitstring[8] = {0};
 	//TODO: try to spead up by caching the reads, or using local memory to store intermediate result?
 	//uint cache[8];
@@ -285,7 +277,7 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 
 	//horizontal pass - compute row-wise histogram bitstrings (scan 1D horizontal areas of window-width for each pixel)
 #pragma unroll
-	for (; xProbe < WINSIZE; xProbe++){
+	for (; xProbe < WINDOW_SIZE; xProbe++){
 		bin = read_imageui(input,sampler,(int2) (xProbe, y)).x;
 		idxUint = bin >> 5;
 		idxBit = bin - (idxUint << 5);
@@ -297,7 +289,7 @@ void csDescriptorRowBitstrings(__read_only image2d_t input, __write_only image2d
 	int x = 0;
 	int ixOut;
 #pragma unroll
-	for(xProbe = WINSIZE; xProbe < dims.x; xProbe++){
+	for(xProbe = WINDOW_SIZE; xProbe < dims.x; xProbe++){
 		bin = read_imageui(input,sampler,(int2) (x, y)).x;
 		if(!(--slideHist[bin])){
 			idxUint = bin >> 5; //same as division by 32
@@ -332,11 +324,11 @@ void csDescriptorWindowBitstringsCache(__read_only image2d_t input, __write_only
 	uint4 aggLower = (uint4)(0,0,0,0);
 	uint4 aggUpper = (uint4)(0,0,0,0);
 	uint4 upper, lower;
-	uint4 lBitCache[WINSIZE];
-	uint4 uBitCache[WINSIZE];
+	uint4 lBitCache[WINDOW_SIZE];
+	uint4 uBitCache[WINDOW_SIZE];
 	int cacheIns;
 #pragma unroll
-	for(int y = 0; y < WINSIZE; y++){
+	for(int y = 0; y < WINDOW_SIZE; y++){
 		lower = read_imageui(input,sampler,(int2) (y, x_lower));
 		upper = read_imageui(input,sampler,(int2) (y, x_upper));
 		lBitCache[y] = lower;
@@ -351,14 +343,14 @@ void csDescriptorWindowBitstringsCache(__read_only image2d_t input, __write_only
 	int yIns = 1;
 
 #pragma unroll
-	for(int y = WINSIZE; y < dims.x; y++,yIns++){
+	for(int y = WINDOW_SIZE; y < dims.x; y++,yIns++){
 		aggLower = (uint4)(0,0,0,0);
 		aggUpper = (uint4)(0,0,0,0);
-		cacheIns = y%WINSIZE;
+		cacheIns = y%WINDOW_SIZE;
 		lBitCache[cacheIns] = read_imageui(input,sampler,(int2) (y, x_lower));
 		uBitCache[cacheIns] = read_imageui(input,sampler,(int2) (y, x_upper));
 
-		for(int row = 0; row < WINSIZE; row ++){
+		for(int row = 0; row < WINDOW_SIZE; row ++){
 			aggLower |= lBitCache[row];
 			aggUpper |= uBitCache[row];
 		}
@@ -378,11 +370,11 @@ void csDescriptorWindowBitstringsBrute(__read_only image2d_t input, __write_only
 	size_t x_lower = x << 1;
 	size_t x_upper = x_lower + 1;
 	uint4 aggLower, aggUpper;
-	int gStopAt = dims.x - WINSIZE;
+	int gStopAt = dims.x - WINDOW_SIZE;
 	//gStopAt = 4;
 #pragma unroll
 	for(int yg = 0; yg <= gStopAt; yg++){
-		int stopBefore = yg+WINSIZE;
+		int stopBefore = yg+WINDOW_SIZE;
 		aggLower = (uint4)(0,0,0,0);
 		aggUpper = (uint4)(0,0,0,0);
 		for(int y = yg; y < stopBefore; y++){
@@ -422,7 +414,12 @@ void bitstringToHist(ushort* slideHist,uint4 lower,uint4 upper){
 	}
 }
 
-
+__kernel
+void zeroOutImage(__write_only image2d_t output){
+	size_t x = get_global_id(0);
+	size_t y = get_global_id(1);
+	write_imageui(output,(int2)(x,y),(uint4)(0,0,0,0));
+}
 
 
 __kernel
@@ -434,12 +431,12 @@ void csDescriptorsBrute(__read_only image2d_t input, __global ushort* output){
 	int height = dimsBitstrings.y;
 	uint4 lower, upper;
 
-	ushort slideHist[256] = {0};
+	ushort slideHist[BASE_QUANT_SPACE] = {0};
 	int xStartWidth = x_region << 1;
-	int xStopAt = (x_region + CUTOFF_RS) << 1;
+	int xStopAt = (x_region + REGION_CLIP) << 1;
 	__global ushort* histAt = output + x_region * width;
 
-	for(int y = 0; y < CUTOFF_RS; y++){
+	for(int y = 0; y < REGION_CLIP; y++){
 		for(int x = xStartWidth; x < xStopAt; x+=2){
 			lower = read_imageui(input,sampler,(int2) (y, x));
 			upper = read_imageui(input,sampler,(int2) (y, x+1));
