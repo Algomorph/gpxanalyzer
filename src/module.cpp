@@ -19,7 +19,7 @@ BOOST_PYTHON_MODULE(gpxanalyzer_internals)
 	Py_Initialize();
 	import_array();
 
-	def("extract_cs_descriptor",gpxa::extractCSDescriptor,(arg("bitstrings"),arg("x"),arg("y"),arg("z")));
+	def("bitstrings_to_histogram",gpxa::pyBitstringsToHistogram,(arg("bitstrings"),arg("x"),arg("y")));
 	scope().attr("REGION_SIZE") = REGION_SIZE;
 	scope().attr("WINDOW_SIZE") = WINDOW_SIZE;
 	scope().attr("REGION_CLIP") = REGION_CLIP;

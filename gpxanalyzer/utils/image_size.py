@@ -30,7 +30,6 @@ def get_image_info(file_path):
         width = -1
         data = im_file.read(26)
         msg = " raised while trying to decode as JPEG."
-        #TODO: obtain number of channels as well
         n_channels = 3
 
         if (size >= 10) and data[:6] in ('GIF87a', 'GIF89a'):

@@ -68,8 +68,11 @@
 							</tool>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="cdt.managedbuild.config.gnu.exe.debug.735742983.171175024" name="CSExtraction.cpp" rcbsApplicability="disable" resourcePath="src/CSExtraction.cpp" toolsToInvoke="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.668429790.44213429">
+						<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.668429790.44213429" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.exe.debug.668429790"/>
+					</fileInfo>
 					<sourceEntries>
-						<entry excluding="src/CSExtraction.cpp|kernels/cs.cl|kernels/test_kernel.cl|kernels/sat.cl|kernels/imsat.cl" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="kernels/cs.cl|kernels/test_kernel.cl|kernels/sat.cl|kernels/imsat.cl" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

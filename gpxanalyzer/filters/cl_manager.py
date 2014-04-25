@@ -277,10 +277,13 @@ Best guess for maximum concurrent execution paths: {6:0d}"""\
         #>>In this code, all the tiles for the OpenCL device are referred to as "cells"
         #>>The tiles loaded into memory are still called "tiles"
         #>>Printed information messages use "tiles" but are more explicit about which ones.
-        #the divisior '4' signifies 4 bytes / uint32, since computations will be done in uint32
         if(cell_shape is None):
-            cell_size = 2 ** int(math.log(math.sqrt(avail_mem / avail_memory_divisor / 4)) / math.log(2))
-            input_buf_size = cell_size * cell_size * 4 #TODO: is this needed
+            #the divisior '4' signifies 4 bytes / uint32, since computations will be done at worst in uint32
+            memory_bound_cell_size = 2 ** int(math.log(math.sqrt(avail_mem / avail_memory_divisor / 4)) / math.log(2))
+            max_width = device.image2d_max_width
+            max_height = device.image2d_max_height
+            cell_size = np.min([memory_bound_cell_size,max_width,max_height])
+            input_buf_size = cell_size * cell_size * 4
             if(verbose > 0):
                 print "Limiting tile size for device to {0:0d} x {0:0d} pixels ({1:0d} MiB input buffer)."\
                 .format(cell_size, input_buf_size / bytes_in_mb)
