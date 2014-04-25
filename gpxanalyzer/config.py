@@ -7,7 +7,7 @@ import ConfigParser
 import os
 import re
 
-from gpxa.utils.data import Bunch
+from gpxanalyzer.utils.data import Bunch
 
 default_setting_hash = {"system":
                             {"max_tile_cache_mem":"4096MB",

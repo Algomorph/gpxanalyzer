@@ -266,27 +266,3 @@ class CSDescriptorExtractor:
     def extract_descriptor(self,cell,x,y):
         return gi.bitstrings_to_descriptor(cell,x,y)
         
-        
-########################################################################################################################
-    def extract(self, tile, length):
-        self.allocate_buffers()
-        mgr = self.manager
-        y_start = 0
-        convert_to_HMMD = cl.Kernel(self.program, "convert_to_HMMD")
-        quantize_HMMD = cl.Kernel(self.program,"quantize_HMMD")
-        for y_end in xrange(mgr.cell_height, tile.shape[0] + 1, mgr.cell_height):
-            x_start = 0 
-            for x_end in xrange(mgr.cell_width, tile.shape[1] + 1, mgr.cell_width):
-                cell = tile[y_start:y_end, x_start:x_end, :]
-                self.source_image_map.write(cell)
-                convert_to_HMMD(mgr.queue, mgr.cell_shape, self.pixelwise_group_dims, 
-                                self.source_image_map.image_dev, self.hmmd_buffer)
-                quantize_HMMD(mgr.queue,mgr.cell_shape, self.pixelwise_group_dims,
-                              self.hmmd_buffer,self.quant_buffer,self.diff_thresh_buff,
-                              self.hue_levels_buff,self.sum_levels_buff,self.cum_levels_buff)    
-                
-                
-                
-                x_start = x_end
-            y_start = y_end
-        

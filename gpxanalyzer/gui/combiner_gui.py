@@ -48,6 +48,14 @@ class Pow2SpinBox(QtGui.QSpinBox):
         
     def stepBy(self,steps):
         cur = self.value()
+        if(cur not in self.allowed_vals):
+            for ix_cur in xrange(0,len(self.allowed_vals)):
+                closest = self.allowed_vals[ix_cur]
+                if(cur < closest):
+                    if(ix_cur > 0 and cur - self.allowed_vals[ix_cur-1] < closest - cur):
+                        closest = self.allowed_vals[ix_cur-1]
+                    break
+            cur = closest
         idx = self.allowed_vals.index(cur)
         idx += steps;
         if idx >= len(self.allowed_vals): idx = len(self.allowed_vals) - 1
