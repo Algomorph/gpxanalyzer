@@ -264,7 +264,7 @@ class CSDescriptorExtractor:
         return self.__extract_quant_bitstrings_no_check(quant_cell)
     
     def extract_descriptor(self,cell,x,y):
-        return gi.extract_cs_descriptor(cell,x,y)
+        return gi.bitstrings_to_descriptor(cell,x,y)
         
         
 ########################################################################################################################

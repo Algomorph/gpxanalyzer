@@ -25,7 +25,7 @@ typedef unsigned long long uint64;
 #define BASE_QUANT_SPACE 256
 #define WINDOW_SIZE 8
 #define REGION_CLIP REGION_SIZE - WINDOW_SIZE + 1
-#define REGION_NORM REGION_CLIP * REGION_CLIP
+#define REGION_NORM (REGION_CLIP) * (REGION_CLIP)
 #define SCALE_INCREMENT_FACTOR 2.0
 
 namespace gpxa{
