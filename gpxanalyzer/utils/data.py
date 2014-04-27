@@ -40,9 +40,12 @@ def check_image(path, shape, verbose = False):
     del img
     gc.collect()
     return True
+    
 
-def load_string_from_file(path):
-    src_file = open(path,"r")
+def load_string_from_file(project_path):
+    module_path =os.path.abspath(os.path.dirname(__file__))
+    file_path = os.path.split(os.path.split(module_path)[0])[0] + os.path.sep + project_path
+    src_file = open(file_path,"r")
     src = src_file.read()
     src_file.close()
     return src

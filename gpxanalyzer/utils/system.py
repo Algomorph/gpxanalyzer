@@ -6,6 +6,7 @@ Created on Feb 24, 2014
 import platform
 import psutil
 import re
+import os
 import subprocess
 
 import OpenGL.GL as gl

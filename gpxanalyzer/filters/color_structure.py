@@ -217,6 +217,14 @@ class CSDescriptorExtractor:
     
     def __extract_bitstrings_no_check(self,cell):
         mgr = self.manager
+        if(cell.shape[0] != mgr.cell_height or cell.shape[1] != cell.cell_width()):
+            n_channels = 3 if mgr.supports_3channel_images else 4
+            padded = np.zeros((mgr.cell_height,mgr.cell_width,n_channels),dtype=np.uint8)
+            if(cell.shape[2] == 3):
+                np.copyto(padded[0:cell.shape[0],0:cell.shape[1],0:3],cell)
+            else:
+                np.copyto(padded[0:cell.shape[0],0:cell.shape[1]],cell)
+            cell = padded
         if(cell.shape[2] == 3 and not mgr.supports_3channel_images):
             cell = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
         
