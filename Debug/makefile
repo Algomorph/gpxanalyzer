@@ -50,7 +50,7 @@ all: gpxanalyzer_internals.so
 gpxanalyzer_internals.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C++ Linker'
-	g++ -shared -o "gpxanalyzer_internals.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -fopenmp  -lgomp -shared -o "gpxanalyzer_internals.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 	$(MAKE) --no-print-directory post-build

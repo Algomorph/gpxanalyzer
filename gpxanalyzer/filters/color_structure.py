@@ -51,7 +51,6 @@ class CSDescriptorExtractor:
 
         self.recompile()
         
-        
         self.pixelwise_group_dims = (mgr.warp_size, 4)
         self.hist_global_dims =(mgr.cell_width / subsample,)
         self.hist_group_dims = (self.group_width,)
@@ -217,7 +216,7 @@ class CSDescriptorExtractor:
     
     def __extract_bitstrings_no_check(self,cell):
         mgr = self.manager
-        if(cell.shape[0] != mgr.cell_height or cell.shape[1] != cell.cell_width()):
+        if(cell.shape[0] != mgr.cell_height or cell.shape[1] != mgr.cell_width):
             n_channels = 3 if mgr.supports_3channel_images else 4
             padded = np.zeros((mgr.cell_height,mgr.cell_width,n_channels),dtype=np.uint8)
             if(cell.shape[2] == 3):

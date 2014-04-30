@@ -30,8 +30,8 @@ if __name__ == '__main__':
     extr = cs.CSDescriptorExtractor(mgr)
     im = Image.open(args.input_image)
     (width,height) = im.size
-    #descriptors = np.zeros((width-gi.REGION_SIZE+1,height-gi.REGION_SIZE+1,256),dtype=np.uint8)
-    bitstrings = np.zeros((height-gi.WINDOW_SIZE+1,width-gi.WINDOW_SIZE+1,8),dtype=np.uint32)
+    descriptors = np.zeros((width-gi.REGION_SIZE+1,height-gi.REGION_SIZE+1,256),dtype=np.uint8)
+    #bitstrings = np.zeros((height-gi.WINDOW_SIZE+1,width-gi.WINDOW_SIZE+1,8),dtype=np.uint32)
     for y in xrange(0,height,mgr.cell_height-gi.WINDOW_SIZE+1):
         for x in xrange(0,width,mgr.cell_width-gi.WINDOW_SIZE+1):
             right = min(x+mgr.cell_width, width)
@@ -40,18 +40,18 @@ if __name__ == '__main__':
             
             bitcell = extr.extract_bitstrings(cell)
             
-            bit_bottom = y+mgr.cell_height
-            bit_right = x+mgr.cell_width
-            if(bit_bottom > bitstrings.shape[0]):
-                bit_height = mgr.cell_height - (bit_bottom - bitstrings.shape[0]) 
-                bit_bottom = bitstrings.shape[0]
-                bitcell = bitcell[0:bit_height]
-            
-            if(bit_right > bitstrings.shape[1]):
-                bit_width = mgr.cell_width - (bit_right - bitstrings.shape[1]) 
-                bit_right = bitstrings.shape[1]
-                bitcell = bitcell[:,0:bit_width]
-
-            np.copyto(bitstrings[y:bit_bottom,x:bit_right],bitcell)
+#             bit_bottom = y+mgr.cell_height
+#             bit_right = x+mgr.cell_width
+#             if(bit_bottom > bitstrings.shape[0]):
+#                 bit_height = mgr.cell_height - (bit_bottom - bitstrings.shape[0]) 
+#                 bit_bottom = bitstrings.shape[0]
+#                 bitcell = bitcell[0:bit_height]
+#             
+#             if(bit_right > bitstrings.shape[1]):
+#                 bit_width = mgr.cell_width - (bit_right - bitstrings.shape[1]) 
+#                 bit_right = bitstrings.shape[1]
+#                 bitcell = bitcell[:,0:bit_width]
+# 
+#             np.copyto(bitstrings[y:bit_bottom,x:bit_right],bitcell)
             
     
