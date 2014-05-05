@@ -14,6 +14,7 @@ import pyopencl as cl
 import gpxanalyzer.utils.system as system
 import libMPEG7 as mp7
 import gpxanalyzer.gpxanalyzer_internals as gi
+from PIL import Image
 
 
 class Test(unittest.TestCase):
@@ -28,8 +29,8 @@ class Test(unittest.TestCase):
     def setUpClass(cls):
         os.environ["PYOPENCL_COMPILER_OUTPUT"] = '1'
         Test.gpu = system.get_devices_of_type(cl.device_type.GPU)[0]
-        tile_width = 512
-        tile_height = 512
+        tile_width = 4096
+        tile_height = 4096
         cell_width = 256
         cell_height = 256
         Test.mgr = clm.FilterCLManager.generate(Test.gpu, (tile_height, tile_width), 
@@ -52,12 +53,7 @@ class Test(unittest.TestCase):
     def test_hmmd_conversion(self):
         cell = Test.cell
         res_c = mp7.convert_RGB2HMMD(cell)
-        #res_py = cs.convert_RGB2HMMD(cell)
         mgr = Test.mgr
-        
-#         self.assertTrue(np.array_equal(res_py[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
-#         self.assertTrue(np.array_equal(res_py[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
-#         self.assertTrue(np.array_equal(res_py[:,:,1], res_c[:,:,1]), "S channel in hmmd converstions doesn't match")
         
         cell4 = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
         ex = Test.extr
@@ -71,7 +67,6 @@ class Test(unittest.TestCase):
         cell = Test.cell
         extr = Test.extr
         hmmd_cell = mp7.convert_RGB2HMMD(cell)
-        #res_py = cs.quantize_HMMD(hmmd_cell)
         res_cl = extr.quantize_HMMD(hmmd_cell)
         res_c = mp7.quantize_HMMD(hmmd_cell)
         self.assertTrue(np.array_equal(res_cl,res_c),"HMMD quantization mismatch")
@@ -115,7 +110,8 @@ class Test(unittest.TestCase):
                         "Result bitstring extraction kernel doesn't match ground truth")
         
         res_cl = extr.extract_bitstrings(cell)
-        self.assertTrue(np.array_equal(res_cl[0:249,:], cs.reshape_bitstrings(res_py)[0:249,:]),
+        res_py = cs.reshape_bitstrings(res_py)
+        self.assertTrue(np.array_equal(res_cl[0:249,:], res_py[0:249,:]),
                         "Bitstring extraction doesn't match ground truth")
         
         
@@ -128,14 +124,26 @@ class Test(unittest.TestCase):
 
     def test_descriptors(self):
         cell = Test.cell
-        mgr = Test.mgr
         extr = Test.extr
         bitstrings = extr.extract_bitstrings(cell)
-        descr = gi.extract_cs_descriptor(bitstrings,0,0,0)
-        descr_py = cs.bitstrings_to_descriptors(bitstrings, 0,0,0) 
-        descr_c = mp7.get_color_structure_descriptor(cell)
-        self.assertTrue(np.array_equal(descr_c, descr_py),
+        descr_gi = extr.extract_bistatrings_descriptor(bitstrings,0,0)
+        cell_bgr = np.zeros_like(cell)
+        cell_bgr[:,:,0] = cell[:,:,2]
+        cell_bgr[:,:,1] = cell[:,:,1]
+        cell_bgr[:,:,2] = cell[:,:,0]
+        descr_mp7 = mp7.get_color_structure_descriptor(cell_bgr,256)
+        self.assertTrue(np.array_equal(descr_gi, descr_mp7),
                          "Pure-Python descriptor extraction doesn't match ground truth")
+        
+    def test_extraction(self):
+        path = "/mnt/sdb2/Data/jcb/201_chunk/0000-0000.png"
+        im = Image.open(path)
+        tile = np.array(im)
+        mgr = clm.FilterCLManager.generate(Test.gpu, (4096, 4096), 
+                                                cell_shape=(2048, 2048), verbose=True)
+        extr = cs.CSDescriptorExtractor(mgr)
+        descr = extr.extract(tile)
+        
         
         
     @classmethod

@@ -74,11 +74,11 @@ class ImageCLMap:
         
     def __write(self,array, wait_for = None, is_blocking = True):
         np.copyto(self.array,array)
-        return cl.enqueue_copy(self.manager.queue, self.image_dev,self.array,origin = (0,0), region=self.manager.cell_shape,
+        return cl.enqueue_copy(self.manager.queue, self.image_dev,self.array,origin = (0,0), region=(array.shape),
                         wait_for = wait_for, is_blocking = is_blocking)
     
     def __read(self,array,wait_for = None, is_blocking = True):
-        evt = cl.enqueue_copy(self.manager.queue, self.array,self.image_dev,origin = (0,0),region=self.manager.cell_shape,
+        evt = cl.enqueue_copy(self.manager.queue, self.array,self.image_dev,origin = (0,0),region=(array.shape),
                         wait_for = wait_for, is_blocking = is_blocking)
         np.copyto(array,self.array)
         return evt
@@ -103,6 +103,7 @@ class FilterCLManager(object):
         
         self.cell_shape = cell_shape
         self.tile_shape = tile_shape
+        self.cells_per_tile = (tile_shape[0]/cell_shape[0],tile_shape[1]/cell_shape[1])
         if(len(self.tile_shape) == 2):
             self.n_channels = 1
         else:
@@ -195,7 +196,41 @@ class FilterCLManager(object):
             except cl.LogicError:
                 continue
         return picked_uint8_format, picked_int16_format, picked_uint32_format
-    
+
+    def traverse_tile(self,tile,routine,out_cell_shape, out_dtype, cell_overlap):
+        n_dims = len(out_cell_shape)
+        
+        overlap_height = cell_overlap[0]
+        overlap_width = cell_overlap[1]
+        
+        out_shape = tuple([tile.shape[0] - overlap_height, tile.shape[1] - overlap_width]+
+                          [out_cell_shape[x] for x in xrange(2,n_dims)])
+        
+        print out_shape
+        
+        out = np.zeros(out_shape, out_dtype)
+        (cell_overlap_y,cell_overlap_x) = cell_overlap
+        step_y = self.cell_shape[0]-cell_overlap_y
+        step_x = self.cell_shape[1]-cell_overlap_x
+        
+        out_y = 0
+        for y_cell in xrange(0,tile.shape[0],step_y):
+            out_x = 0
+            for x_cell in xrange(0,tile.shape[1],step_x):
+                cell = tile[y_cell:y_cell+self.cell_shape[0],x_cell:x_cell+self.cell_shape[1]]
+                cell_out = routine(cell.copy())
+                out_y_end = out_y+cell_out.shape[0]
+                out_x_end = out_x+cell_out.shape[1]
+                out_chunk = out[out_x:out_x_end,out_y:out_y_end]
+
+                if(out_chunk.shape != cell_out.shape):
+                    np.copyto(out_chunk,cell_out[0:out_chunk.shape[0],0:out_chunk.shape[1]])
+                else:
+                    np.copyto(out_chunk,cell_out)
+                out_x = out_x_end
+            out_y = out_y_end
+        return out
+                
     @staticmethod
     def generate(device, tile_shape, tile_dir = None, cell_shape = None, verbose = False):
         """
@@ -229,7 +264,7 @@ class FilterCLManager(object):
             tile_shape = (tile_height, tile_width, n_channels)
                 
             if(verbose):
-                print "Tile Dimensions\nsize: %d, %d" % (tile_height, tile_width)
+                print("Tile Dimensions\nsize: {0:0d}, {1:0d}".format(tile_height, tile_width))
         
         if(device.type == cl.device_type.CPU):
             avail_memory_divisor = 4
@@ -237,7 +272,7 @@ class FilterCLManager(object):
             avail_memory_divisor = 2
         
         if(verbose):
-            print "Using device \"%s\"" % device.name
+            print("Using device \"{0:s}\"".format(device.name))
         
         bytes_in_mb = 1048576  # ==2**20
         # create temporary OpenCL context
@@ -255,7 +290,7 @@ class FilterCLManager(object):
         warp_size = dev.determine_warp_size(device, context)
         
         if(verbose):
-            print """\nDevice Information
+            print ("""\nDevice Information
 Global Memory Size: {0:0d} MiB
 Local/Workgroup Memory Size: {1:0d} KiB
 Warp/Wavefront: {2:0d}
@@ -268,7 +303,7 @@ Best guess for maximum concurrent execution paths: {6:0d}"""\
                     wg_size,
                     num_sms, 
                     determine_n_processors_per_sm,
-                    max_threads)
+                    max_threads))
             
         # determine size of OpenCL buffers
         # best guess for used VRAM
@@ -285,8 +320,8 @@ Best guess for maximum concurrent execution paths: {6:0d}"""\
             cell_size = np.min([memory_bound_cell_size,max_width,max_height])
             input_buf_size = cell_size * cell_size * 4
             if(verbose > 0):
-                print "Limiting tile size for device to {0:0d} x {0:0d} pixels ({1:0d} MiB input buffer)."\
-                .format(cell_size, input_buf_size / bytes_in_mb)
+                print ("Limiting tile size for device to {0:0d} x {0:0d} pixels ({1:0d} MiB input buffer)."\
+                .format(cell_size, input_buf_size / bytes_in_mb))
             cell_shape = (cell_size,cell_size)
             
             
