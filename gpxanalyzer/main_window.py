@@ -77,6 +77,9 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
     def about(self):
         QtGui.QMessageBox.about(self, "About Gigapixel Analyzer",
                 "<p>The <b>Gigapixel Analyzer</b>  is a really cool app still under development.</p>")
+        
+    def zoom_in_smoothly(self):
+        self.image_area.zoom_in_smoothly()
 
     def create_actions(self):
         self.about_action = QtGui.QAction("&About", self, triggered=self.about)
@@ -95,6 +98,9 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
     
         self.open_arranger_tool_action = QtGui.QAction("&Pyramidize Tiles...", self, shortcut="Ctrl+Shift+P",
                     triggered=self.open_tile_arranger)
+        
+        self.zoom_in_smoothly_action = QtGui.QAction("&Zoom in smoothly", self, shortcut="Ctrl+Shift+Z",
+                    triggered=self.zoom_in_smoothly)
         
         self.set_startup_file_action = QtGui.QAction("&Set Startup File...",self,shortcut="Ctrl+Shift+F",
                                                triggered=self.set_startup_file)
@@ -119,6 +125,7 @@ class GigapixelAnalyzer(QtGui.QMainWindow):
         self.fileMenu.addAction(self.exit_action)
 
         self.viewMenu = QtGui.QMenu("&View", self)
+        self.viewMenu.addAction(self.zoom_in_smoothly_action)
         self.viewMenu.addSeparator()
 
         self.toolsMenu = QtGui.QMenu("&Tools",self)

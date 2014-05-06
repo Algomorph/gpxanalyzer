@@ -155,14 +155,10 @@ class QTiledLayerViewer(QtGui.QWidget):
         tile_size, tile_zoom = self.__tile_size_by_zoom(zoom)
         tiles_per_side = 2**tile_zoom
         return tile_size * tiles_per_side
-        
-    def wheelEvent(self,event):
-        #TODO: smooth zoom animations, as in gigapan.com
-        numDegrees = float(event.delta()) / 8
-        numSteps = numDegrees / 15
+    
+    def zoom_by(self,val, pt):
         last_zoom = self.zoom
-        self.zoom = max(0.0,self.zoom + numSteps / 4)
-        pt = event.pos()
+        self.zoom = max(0.0,self.zoom + val)
         x, y = pt.x(), pt.y()
         last_offset_x = self.top_left[0] - x
         last_offset_y = self.top_left[1] - y
@@ -170,7 +166,20 @@ class QTiledLayerViewer(QtGui.QWidget):
         new_offset_x = int(last_offset_x * size_ratio)
         new_offset_y = int(last_offset_y * size_ratio)
         self.top_left = (x + new_offset_x, y + new_offset_y)
+        print self.zoom 
         self.repaint()
+        
+    def wheelEvent(self,event):
+        #TODO: smooth zoom animations, as in gigapan.com
+        numDegrees = float(event.delta()) / 8
+        numSteps = numDegrees / 15
+        self.zoom_by(numSteps / 4, event.pos())
+        
+    def zoom_in_smoothly(self):
+        zoom_step = 0.02
+        pt = self.mapFromGlobal(QtGui.QCursor.pos())
+        while self.zoom < 8.7:
+            self.zoom_by(zoom_step, pt)
         
     def paintEvent(self,event):
         qp = QtGui.QPainter()
