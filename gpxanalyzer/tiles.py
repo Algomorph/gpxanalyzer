@@ -123,7 +123,10 @@ class QTiledLayerViewer(QtGui.QWidget):
         self.repaint()
         
     def switch_base_layer(self,layer):
-        self.layers[0] = layer
+        if(len(self.layers) == 0):
+            self.layers.append(layer)
+        else:
+            self.layers[0] = layer
         self.full_tile_size = layer.tile_size
         self.half_tile_size = self.full_tile_size / 2
         self.empty_cache()

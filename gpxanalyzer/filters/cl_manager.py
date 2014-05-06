@@ -13,6 +13,7 @@ import gpxanalyzer.utils.system as dev
 import gpxanalyzer.utils.image_size as img_sz
 import numpy as np
 from gpxanalyzer.utils.enum  import enum
+from apt.package import Origin
 
 map_type = enum(READ="READ",WRITE="WRITE",READ_WRITE="READ_WRITE")
 np_type_by_channel_type = {cl.channel_type.UNSIGNED_INT8: np.uint8,
@@ -74,11 +75,11 @@ class ImageCLMap:
         
     def __write(self,array, wait_for = None, is_blocking = True):
         np.copyto(self.array,array)
-        return cl.enqueue_copy(self.manager.queue, self.image_dev,self.array,origin = (0,0), region=(array.shape),
+        return cl.enqueue_copy(self.manager.queue, self.image_dev,self.array,origin = (0,0), region=(array.shape[0],array.shape[1]),
                         wait_for = wait_for, is_blocking = is_blocking)
     
     def __read(self,array,wait_for = None, is_blocking = True):
-        evt = cl.enqueue_copy(self.manager.queue, self.array,self.image_dev,origin = (0,0),region=(array.shape),
+        evt = cl.enqueue_copy(self.manager.queue, self.array,self.image_dev,origin = (0,0),region=(array.shape[0],array.shape[1]),
                         wait_for = wait_for, is_blocking = is_blocking)
         np.copyto(array,self.array)
         return evt
@@ -205,8 +206,6 @@ class FilterCLManager(object):
         
         out_shape = tuple([tile.shape[0] - overlap_height, tile.shape[1] - overlap_width]+
                           [out_cell_shape[x] for x in xrange(2,n_dims)])
-        
-        print out_shape
         
         out = np.zeros(out_shape, out_dtype)
         (cell_overlap_y,cell_overlap_x) = cell_overlap

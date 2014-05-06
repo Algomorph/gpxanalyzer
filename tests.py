@@ -54,10 +54,8 @@ class Test(unittest.TestCase):
         cell = Test.cell
         res_c = mp7.convert_RGB2HMMD(cell)
         mgr = Test.mgr
-        
-        cell4 = np.append(cell,np.zeros((mgr.cell_shape[0],mgr.cell_shape[1],1),dtype=np.uint8),axis=2)
         ex = Test.extr
-        res_cl = ex.convert_to_HMMD(cell4)[:,:,0:3]
+        res_cl = ex.convert_to_HMMD(cell)[:,:,0:3]
             
         self.assertTrue(np.array_equal(res_cl[:,:,0], res_c[:,:,0]), "H channel in hmmd converstions doesn't match")
         self.assertTrue(np.array_equal(res_cl[:,:,1], res_c[:,:,1]), "S channel in hmmd converstions doesn't match")
@@ -142,7 +140,7 @@ class Test(unittest.TestCase):
         mgr = clm.FilterCLManager.generate(Test.gpu, (4096, 4096), 
                                                 cell_shape=(2048, 2048), verbose=True)
         extr = cs.CSDescriptorExtractor(mgr)
-        descr = extr.extract(tile)
+        #descr = extr.extract_greyscale(tile)
         
         
         

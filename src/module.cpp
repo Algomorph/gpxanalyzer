@@ -6,10 +6,9 @@
 #include <bitset>
 #include <CSExtraction.hpp>
 #include <Bitcounting.hpp>
+#include <CVBoostConverter.hpp>
 
 namespace bp = boost::python;//not to be confused with "British Petroleum"
-typedef unsigned char uint8;
-typedef unsigned long long uint64;
 
 
 /**
@@ -20,8 +19,12 @@ BOOST_PYTHON_MODULE(gpxanalyzer_internals)
 	using namespace boost::python;
 	Py_Initialize();
 	import_array();
+	//setup routines
 	gpxa::setupTable();
 	gpxa::precomputeTotalLevels();
+	//Initialize converters
+	to_python_converter<cv::Mat, bcvt::matToNDArrayBoostConverter>();
+	bcvt::matFromNDArrayBoostConverter();
 
 	def("bitstrings_to_histogram",gpxa::pyBitstringsToHistogram,(arg("bitstrings"),arg("x") = 0,arg("y") = 0));
 	def("bitstrings_to_descriptor",gpxa::pyBitstringsToDescriptor,(arg("bitstrings"),arg("x") = 0,arg("y") = 0));

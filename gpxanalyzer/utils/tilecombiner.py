@@ -50,6 +50,13 @@ parser.add_argument("--overflow_mode", "-of", default=overflow_modes[0],
 
 # traverse image names and extract the x & y coordinates, thus finding out cell dimensions
 def get_cell_counts(img_names):
+    '''
+    gets the total counts of image tiles in x and y directions
+    @type img_names: list of str
+    @param img_names: all tile image names in the format xxxx-yyyy.extension (presumably in the same folder)
+    @type return: tuple of int
+    @return the width, height of the tiled image in tiles
+    '''
     img_num_regex = re.compile("\d\d\d\d")
     max_cell_x = 0
     max_cell_y = 0

@@ -141,7 +141,6 @@ class CSDescriptorExtractor:
         mgr = self.manager
         if(cell.shape[2] == 3 and not mgr.supports_3channel_images):
             cell = np.append(cell, np.zeros((mgr.cell_shape[0], mgr.cell_shape[1], 1), dtype=np.uint8), axis=2)
-        
         self.source_image_map.write(cell)
         evt = self.kernel_convert_to_HMMD(mgr.queue, mgr.cell_shape, self.pixelwise_group_dims,
                                     self.source_image_map.image_dev, self.hmmd_buffer)
