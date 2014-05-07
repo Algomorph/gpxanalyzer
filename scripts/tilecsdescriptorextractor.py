@@ -10,48 +10,128 @@ import gpxanalyzer.filters.color_structure as cs
 import gpxanalyzer.filters.cl_manager as clm
 import gpxanalyzer.utils.system as system
 import gpxanalyzer.gpxanalyzer_internals as gi
+import gpxanalyzer.utils.image_size as imz
+from scipy.cluster.vq import kmeans
 import numpy as np
 import pyopencl as cl
 import sys
+import os
+import math
 from PIL import Image
 
-parser = argparse.ArgumentParser(description="A tool for extracting MPEG-7 Color Structure descriptors for every 256x256 region of a tiled image.")
 
+parser = argparse.ArgumentParser(description="A tool for extracting MPEG-7 Color Structure descriptors"+
+                                 " for every 256x256 region of a single 2048x2048 image.")
+parser.add_argument('-w', '--channel_clusters', nargs='+', type=int,
+                    help="Distance to which of the cluster means"+
+                    " to represent as R,G,B colors in a mean distance image",default=[1,2,3])
+parser.add_argument("--cluster", "-c", type=bool,action='store_true',
+                    help="generate and save cluster means",default=False)
+parser.add_argument("--mean_distance_image", "-m", type=bool,action='store_true',
+                    help="generate mean-distance image",default=False)
+parser.add_argument("--segmented_image", "-s", type=bool,action='store_true',
+                    help="generate segmented image",default=False)
+parser.add_argument("--number_of_clusters", "-k", type=int,default=3,
+                    help="number of clusters to process",default=False)
 
-parser.add_argument("--input_image", "-i", default=None,
+parser.add_argument("--input_path", "-i", default=None,
                     help="path to the image whose descriptor to compute")
-parser.add_argument("--output_folder", "-o", default=None,
-                    help="path to folder where to store the descriptors")
+parser.add_argument("--output_path", "-o", default=None,
+                    help="path to folder where to store the descriptors and output images")
 
-if __name__ == '__main__':
-    args = parser.parse_args(sys.argv[1:])
+def find_dists(means,rowwise):
+    dists = np.zeros((len(rowwise),len(means)),dtype=np.uint16)
+    for i in xrange(0,len(means)):
+        dists[:,i] = np.sum((means[i] - rowwise)**2,axis=1)
+    return dists
+
+def save_dists_image(dists,path,name,which):
+    n_means = dists.shape[1]
+    if(len(which)!= 3 or len(np.intersect1d(which, np.arange(n_means), True)) < len(which)):
+        raise ValueError("which should contain indexes of means distances to which to represent as"+
+                         " each of the three channels. It should be a length 3 array of indexes.")
+    #normalize
+    maxes = dists.max(axis=0)
+    dists_norm = dists.astype(np.float32) / maxes
+    out_size = int(math.sqrt(dists.shape[0]))
+    raster_dists = dists_norm.reshape((out_size,out_size,n_means))[:,:,which]
+    Image.fromarray(raster_dists).save(path+os.path.sep + name + 
+                                       "_{0:0d}_means_distances-{1:0d}-{2:0d}-{3:0d}.png"\
+                                       .format(n_means,which[0],which[1],which[2]),"PNG")
+
+palette = np.array([[230,174,44],[245,241,22],[168,219,105],[135,208,212],[139,132,184],[173,34,12],[105,72,12],[49,125,2],[2,125,123],[117,98,122],[227,16,44]],dtype=np.uint8)
+
+    
+def save_segment_image(dists, path, name):
+    out_size = int(math.sqrt(dists.shape[0]))
+    n_means = dists.shape[1]
+    classes = np.argmin(dists,axis=1).reshape(out_size,out_size)
+    segmented = np.zeros((out_size,out_size,3),dtype=np.uint8)
+
+    for y in xrange(0,classes.shape[0]):
+        for x in xrange(0,classes.shape[1]):
+            segmented[y,x] = palette[classes[y,x]]
+    Image.fromarray(segmented).save(path+os.path.sep + name + 
+                                       "_{0:0d}_segments.png"\
+                                       .format(n_means),"PNG")
+
+def extract_descriptors(path, n_channels):
     device = system.get_devices_of_type(cl.device_type.GPU)[0]
     mgr = clm.FilterCLManager.generate(device, (0,0), cell_shape=(2048,2048), verbose = True)
     extr = cs.CSDescriptorExtractor(mgr)
-    im = Image.open(args.input_image)
-    (width,height) = im.size
-    descriptors = np.zeros((width-gi.REGION_SIZE+1,height-gi.REGION_SIZE+1,256),dtype=np.uint8)
-    #bitstrings = np.zeros((height-gi.WINDOW_SIZE+1,width-gi.WINDOW_SIZE+1,8),dtype=np.uint32)
-    for y in xrange(0,height,mgr.cell_height-gi.WINDOW_SIZE+1):
-        for x in xrange(0,width,mgr.cell_width-gi.WINDOW_SIZE+1):
-            right = min(x+mgr.cell_width, width)
-            bottom = min(y+mgr.cell_height,height)
-            cell = np.array(im.crop((x,y,right,bottom)))
-            
-            bitcell = extr.extract_bitstrings(cell)
-            
-#             bit_bottom = y+mgr.cell_height
-#             bit_right = x+mgr.cell_width
-#             if(bit_bottom > bitstrings.shape[0]):
-#                 bit_height = mgr.cell_height - (bit_bottom - bitstrings.shape[0]) 
-#                 bit_bottom = bitstrings.shape[0]
-#                 bitcell = bitcell[0:bit_height]
-#             
-#             if(bit_right > bitstrings.shape[1]):
-#                 bit_width = mgr.cell_width - (bit_right - bitstrings.shape[1]) 
-#                 bit_right = bitstrings.shape[1]
-#                 bitcell = bitcell[:,0:bit_width]
-# 
-#             np.copyto(bitstrings[y:bit_bottom,x:bit_right],bitcell)
+    cell = np.array(Image.open(path))
+    if(n_channels == 1):
+        descr = extr.extract_greyscale(cell)
+    else:
+        descr = extr.extract(cell)
+    return descr
+
+def cluster(path, name, k,rowwise):
+    clusters_path = args.output_path + os.path.sep + name + "_{0:0d}_means.npz".format(k)
+    if(os.path.isfile(clusters_path)):
+        cluster_file = np.load(out_descriptor_path)
+        means = descr_file["descriptors"]
+        cluster_file.close()
+    else:
+        means = kmeans(rowwise, k, iter=1)[0]
+        np.savez_compressed(clusters_path,descriptors = descr)
+    return means
+
+if __name__ == '__main__':
+    args = parser.parse_args(sys.argv[1:])
+    #check whether the image has proper dimensions
+    width, height, n_channels = imz.get_image_info(args.input_path)
+    name = os.path.splitext(os.path.split(args.input_path)[1])[0]
+    
+    if(width != 2048 or height != 2048):
+        raise ValueError("Improper input image dimensions, expecting 2048 x 2048,"+
+                         " got {0:0d} x {1:0d}.".format(width,height))
+    out_descriptor_path = args.output_path + os.path.sep + name + "_descriptors.npz"
+    if(os.path.isfile(out_descriptor_path)):
+        descr_file = np.load(out_descriptor_path)
+        descr = descr_file["descriptors"]
+        descr_file.close()
+    else:
+        descr = extract_descriptors(args.input_path, n_channels)
+        np.savez_compressed(out_descriptor_path,descriptors = descr)
+    k = args.number_of_clusters
+    rowwise = descr.reshape((-1,gi.BASE_QUANT_SPACE))
+    which = args.channel_clusters
+    
+    if(args.cluster or args.mean_distance_image or args.segmented_image):
+        means = cluster(args.output_path,name,k,rowwise)    
+    
+    if(args.mean_distance_image or args.segmented_image):
+        dists = find_dists(means, rowwise)
+    
+    if(args.mean_distance_image):
+        save_dists_image(dists, args.output_path, name, which)
+    
+    if(args.segmented_image):
+        save_segment_image(dists, args.output_path, name)
+    
+    
+    
+    
             
     
