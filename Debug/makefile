@@ -13,17 +13,11 @@ RM := rm -rf
 -include objects.mk
 
 ifneq ($(MAKECMDGOALS),clean)
-ifneq ($(strip $(CU_DEPS)),)
--include $(CU_DEPS)
-endif
 ifneq ($(strip $(C++_DEPS)),)
 -include $(C++_DEPS)
 endif
 ifneq ($(strip $(C_DEPS)),)
 -include $(C_DEPS)
-endif
-ifneq ($(strip $(CL_DEPS)),)
--include $(CL_DEPS)
 endif
 ifneq ($(strip $(CC_DEPS)),)
 -include $(CC_DEPS)
@@ -57,7 +51,7 @@ gpxanalyzer_internals.so: $(OBJS) $(USER_OBJS)
 
 # Other Targets
 clean:
-	-$(RM) $(CU_DEPS)$(OBJS)$(C++_DEPS)$(C_DEPS)$(CL_DEPS)$(CC_DEPS)$(LIBRARIES)$(CPP_DEPS)$(CXX_DEPS)$(C_UPPER_DEPS) gpxanalyzer_internals.so
+	-$(RM) $(OBJS)$(C++_DEPS)$(C_DEPS)$(CC_DEPS)$(LIBRARIES)$(CPP_DEPS)$(CXX_DEPS)$(C_UPPER_DEPS) gpxanalyzer_internals.so
 	-@echo ' '
 
 post-build:
