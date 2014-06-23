@@ -65,7 +65,7 @@ def save_dists_image(dists,path,name,which):
     maxes = dists.max(axis=0)
     dists_norm = dists.astype(np.float32) / maxes
     out_size = int(math.sqrt(dists.shape[0]))
-    raster_dists = dists_norm.reshape((out_size,out_size,n_means))[:,:,which]
+    raster_dists = (dists_norm.reshape((out_size,out_size,n_means))[:,:,which] * 255).astype(np.uint8)
     Image.fromarray(raster_dists).save(save_path,"PNG")
 
 palette = np.array([[230,174,44],
@@ -73,10 +73,10 @@ palette = np.array([[230,174,44],
                     [168,219,105],
                     [135,208,212],
                     [139,132,184],
-                    [173,34,12],
-                    [105,72,12],
-                    [49,125,2],
-                    [2,125,123],
+                    [21,255,0],
+                    [255,0,234],
+                    [0,221,255],
+                    [255,145,0],
                     [117,98,122],
                     [227,16,44]],dtype=np.uint8)
 
@@ -108,15 +108,17 @@ def extract_descriptors(path, n_channels):
         descr = extr.extract(cell)
     return descr
 
-def cluster(path, name, k,rowwise):
+def cluster(path, name, k,rowwise, verbose):
     clusters_path = args.output_path + os.path.sep + name + "_{0:0d}_means.npz".format(k)
     if(os.path.isfile(clusters_path)):
-        cluster_file = np.load(out_descriptor_path)
-        means = descr_file["descriptors"]
+        if(verbose):
+            print "Found already-generated cluster means at {0:s}.".format(clusters_path)
+        cluster_file = np.load(clusters_path)
+        means = cluster_file["means"]
         cluster_file.close()
     else:
         means = kmeans(rowwise, k, iter=1)[0]
-        np.savez_compressed(clusters_path,descriptors = descr)
+        np.savez_compressed(clusters_path,means = means)
     return means
 
 if __name__ == '__main__':
@@ -147,7 +149,7 @@ if __name__ == '__main__':
     if(args.cluster or args.mean_distance_image or args.segmented_image):
         if(args.verbose):
             print "Computing & saving cluster centroids / means."
-        means = cluster(args.output_path,name,k,rowwise)    
+        means = cluster(args.output_path,name,k,rowwise, args.verbose)  
     
     if(args.mean_distance_image or args.segmented_image):
         if(args.verbose):
@@ -156,7 +158,7 @@ if __name__ == '__main__':
     
     if(args.mean_distance_image):
         if(args.verbose):
-            print "Computing distance of every descriptor to each of the cluster means."
+            print "Generating and saving the descriptor-to-distance image."
         save_dists_image(dists, args.output_path, name, which)
     
     if(args.segmented_image):
